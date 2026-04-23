@@ -1,8 +1,7 @@
 # Retro Design Elements for [FM-DX-Webserver](https://github.com/NoobishSVK/fm-dx-webserver)
 Analog frequency display, manual frequency rotary control and VU meter, as well as Magic Eye for the FM-DX web server
 
-<img width="1213" height="847" alt="Screenshot 2026-04-20 153235" src="https://github.com/user-attachments/assets/e2015299-cf87-47f5-88bd-69a9f517b137" />
-
+<img width="1310" height="874" alt="Screenshot 2026-04-23 121834" src="https://github.com/user-attachments/assets/a64b406f-f430-4e2b-a3b9-609e0f6777c8" />
 
 ## Version 1.0
 
@@ -11,9 +10,11 @@ Analog frequency display, manual frequency rotary control and VU meter, as well 
 - Dual Analog VU Meter: Side-by-side meters for left and right audio channels with realistic ballistics
 - Magic Eye: Real-time signal and audio-modulated tuning indicator based on vintage cathode-ray tube behavior
 - Fine Tuning Mode: Toggleable high-precision tuning (10x smaller steps) with visual dimple color feedback.
-- Automatic Frequency Limits: Detects FM limits (FM_MIN / FM_MAX) from the server config to ensure accurate scale calibration.
+- Automatic Frequency Limits: Detects FM limits from the server config to ensure accurate scale calibration.
+
+### Note: [Enhanced Tuning](https://github.com/Overland-DX/Enhanced-Tuning) users do not need this plugin, as it is already an extended component in newer versions there! The analog frequency display is designed for FM use only. AM users, please install the Enhanced Tuning Plugin!
  
-## Installation notes:
+## Installation notes
 
 1. 	Download the last repository as a zip
 2.	Unpack the RetroDesignPlugin.js and the RetroDesign folder with the retrodesign.js into the web server plugins folder (..fm-dx-webserver-main\plugins)
@@ -21,6 +22,14 @@ Analog frequency display, manual frequency rotary control and VU meter, as well 
 4. 	Activate the plugin it in the settings
 5.  Enable autostart in the settings and/or adjust the brightness
 
+## How to use
+
+- Main Scale Tuning: Click and drag the frequency scale left or right to adjust the frequency with smooth, animated movement.
+- Dual-Concentric Knob Operation: Use the large outer silver ring for standard 100 kHz tuning steps, while the inner center knob provides fine-tuning adjustments.
+- Fine Tuning Mode: A single click on the inner knob toggles high-precision mode—indicated by the dimple turning blue—enabling 10x smaller frequency steps for exact calibration.
+- Grid Snapping: Double-click the inner knob to instantly snap the frequency to the nearest standard 0.1 MHz grid.
+- Autostart Toggle: Enable or disable the automatic launch of the FM Scale upon page load.
+- Visual Component Toggles: Independently turn the Analog VU Meter and the Magic Eye on or off according to your preference.
  
 ## Contact
 
