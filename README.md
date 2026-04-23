@@ -12,7 +12,7 @@ Analog frequency display, manual frequency rotary control and VU meter, as well 
 - Fine Tuning Mode: Toggleable high-precision tuning (10x smaller steps) with visual dimple color feedback.
 - Automatic Frequency Limits: Detects FM limits from the server config to ensure accurate scale calibration.
 
-### Note: [Enhanced Tuning](https://github.com/Overland-DX/Enhanced-Tuning) users do not need this plugin, as it is already an extended component in newer versions there!
+### Note: [Enhanced Tuning](https://github.com/Overland-DX/Enhanced-Tuning) users do not need this plugin, as it is already an extended component in newer versions there! The analog frequency display is designed for FM use only. AM users, please install the Enhanced Tuning Plugin!
  
 ## Installation notes
 
