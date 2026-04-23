@@ -29,7 +29,8 @@
     }
   }
   
-  const SMOOTHING = 0.08;
+  // The lower the value, the heavier and smoother the needle trails
+  const SMOOTHING = 0.160;
 
   let isVisible   = false;
   let currentFreq = null;
@@ -73,6 +74,12 @@
   const TUNE_INTERVAL = 80;
   let lastTuneTime   = 0;
   let finalTuneTimer = null;
+
+  // ── Flywheel / Inertia State ──────────────────────────────
+  let outerVelocity = 0;
+  let innerVelocity = 0;
+  const FRICTION = 0.90; // Friction: 0.90 to 0.98 (higher = spins longer)
+  let lastDragTime = 0;
 
   // ── Layout Metrics ─────────────────────────────────────────
   let mX, mY, mW, mH; // Scale window bounds
@@ -326,7 +333,7 @@
       return parseFloat(Math.max(FM_MIN, Math.min(FM_MAX, snappedFreq)).toFixed(3));
   }
 
-  // ── Drag handlers ─────────────────────────────────────────
+  // ── Drag / Inertia handlers ───────────────────────────────
   function getClientX(evt) {
     if (evt.touches && evt.touches.length > 0) return evt.touches[0].clientX;
     return evt.clientX;
@@ -353,6 +360,81 @@
     knobInnerR = knobOuterR * 0.65;
   }
 
+  function applyKnobRotation(isOuter, deltaAngle) {
+      let f = currentFreq;
+      const step = 0.1;
+
+      if (isOuter) {
+          outerKnobAngle += deltaAngle;
+          accumulatedOuterAngle += deltaAngle;
+          const anglePerStep = Math.PI / 20; 
+          if (Math.abs(accumulatedOuterAngle) >= anglePerStep) {
+              const steps = Math.trunc(accumulatedOuterAngle / anglePerStep);
+              accumulatedOuterAngle -= steps * anglePerStep;
+              f = snapFreq(f);
+              f += steps * step;
+          }
+      } else {
+          innerKnobAngle += deltaAngle;
+          accumulatedInnerAngle += deltaAngle;
+          const anglePerInnerStep = Math.PI / 6; 
+          if (Math.abs(accumulatedInnerAngle) >= anglePerInnerStep) {
+              const steps = Math.trunc(accumulatedInnerAngle / anglePerInnerStep);
+              accumulatedInnerAngle -= steps * anglePerInnerStep;
+              if (!isFineTuningMode) {
+                  f = snapFreq(f);
+                  f += steps * step; 
+              } else {
+                  f += steps * (step / 10);
+                  f = parseFloat(f.toFixed(4));
+              }
+          }
+      }
+
+      f = Math.max(FM_MIN, Math.min(FM_MAX, f));
+      f = parseFloat(f.toFixed(3));
+      
+      if (dragFreq !== f) {
+          dragFreq = f; 
+          currentFreq = f; // New target for the needle
+          
+          const now = Date.now();
+          if (now - lastTuneTime > TUNE_INTERVAL) { tuneTo(f); lastTuneTime = now; }
+          clearTimeout(finalTuneTimer);
+          finalTuneTimer = setTimeout(() => {
+              const finalF = isFineTuningMode ? parseFloat(dragFreq.toFixed(3)) : snapFreq(dragFreq);
+              tuneTo(finalF);
+          }, 100);
+      }
+  }
+
+  function startKnobDrag(evt) {
+    if (!knobCanvas) return;
+    const rect = knobCanvas.getBoundingClientRect();
+    const x = getClientX(evt) - rect.left;
+    const y = getClientY(evt) - rect.top;
+
+    const dx = x - knobX;
+    const dy = y - knobY;
+    const distSq = dx * dx + dy * dy;
+    
+    knobDragMoved = false; 
+    outerVelocity = 0; // Stop wheel on grab
+    innerVelocity = 0; 
+    lastDragTime = Date.now(); 
+
+    if (distSq <= knobInnerR * knobInnerR) {
+        isDraggingInnerKnob = true;
+        lastDragAngle = getAngle(x, y);
+        knobCanvas.style.cursor = "grabbing";
+    } else if (distSq <= knobOuterR * knobOuterR) {
+        isDraggingOuterKnob = true;
+        accumulatedOuterAngle = 0; 
+        lastDragAngle = getAngle(x, y);
+        knobCanvas.style.cursor = "grabbing";
+    }
+  }
+
   function handleGlobalMove(evt) {
     if (!scaleCanvas || !knobCanvas) return;
     if (isDraggingOuterKnob || isDraggingInnerKnob || isDraggingScale) {
@@ -361,9 +443,6 @@
         return; 
     }
     
-    let f = currentFreq;
-    const step = 0.1;
-
     if (isDraggingOuterKnob || isDraggingInnerKnob) {
         const rect = knobCanvas.getBoundingClientRect();
         const x = getClientX(evt) - rect.left;
@@ -378,39 +457,19 @@
         if (Math.abs(deltaAngle) > 0.02) {
             knobDragMoved = true;
         }
+
+        lastDragTime = Date.now(); // Track time for momentum calculation
         
+        // Apply rotation and store velocity
         if (isDraggingOuterKnob) {
-            outerKnobAngle += deltaAngle;
-            accumulatedOuterAngle += deltaAngle;
-            
-            const anglePerStep = Math.PI / 20; 
-            if (Math.abs(accumulatedOuterAngle) >= anglePerStep) {
-                const steps = Math.trunc(accumulatedOuterAngle / anglePerStep);
-                accumulatedOuterAngle -= steps * anglePerStep;
-                
-                f = snapFreq(f);
-                f += steps * step;
-            }
+            outerVelocity = deltaAngle; 
+            applyKnobRotation(true, deltaAngle);
         } else {
-            innerKnobAngle += deltaAngle;
-            accumulatedInnerAngle += deltaAngle;
-            
-            const anglePerInnerStep = Math.PI / 6; 
-            
-            if (Math.abs(accumulatedInnerAngle) >= anglePerInnerStep) {
-                const steps = Math.trunc(accumulatedInnerAngle / anglePerInnerStep);
-                accumulatedInnerAngle -= steps * anglePerInnerStep;
-                
-                if (!isFineTuningMode) {
-                    f = snapFreq(f);
-                    f += steps * step; 
-                } else {
-                    f += steps * (step / 10);
-                    f = parseFloat(f.toFixed(4));
-                }
-            }
+            innerVelocity = deltaAngle; 
+            applyKnobRotation(false, deltaAngle);
         }
         lastDragAngle = currentAngle;
+
     } else if (isDraggingScale) {
         const rect = scaleCanvas.getBoundingClientRect();
         const x = getClientX(evt) - rect.left;
@@ -421,23 +480,52 @@
         const tW = paperW * 0.92;
         
         let rawF = FM_MIN + ((x - tX) / tW) * (FM_MAX - FM_MIN);
-        f = isFineTuningMode ? rawF : snapFreq(rawF);
-    } else {
-        return;
+        let f = isFineTuningMode ? rawF : snapFreq(rawF);
+        
+        f = Math.max(FM_MIN, Math.min(FM_MAX, f));
+        f = parseFloat(f.toFixed(3));
+        
+        if (dragFreq !== f) {
+            dragFreq = f; 
+            currentFreq = f; 
+            animFreq = f; // Hard snap since we are dragging the scale directly
+            
+            const now = Date.now();
+            if (now - lastTuneTime > TUNE_INTERVAL) { tuneTo(f); lastTuneTime = now; }
+            clearTimeout(finalTuneTimer);
+            finalTuneTimer = setTimeout(() => {
+                const finalF = isFineTuningMode ? parseFloat(dragFreq.toFixed(3)) : snapFreq(dragFreq);
+                tuneTo(finalF);
+            }, 100);
+        }
     }
+  }
+
+  function stopDrag() {
+    const wasActivelyDragging = (isDraggingScale) || ((isDraggingInnerKnob || isDraggingOuterKnob) && knobDragMoved);
+
+    if ((isDraggingInnerKnob || isDraggingOuterKnob) && !knobDragMoved) {
+        isFineTuningMode = !isFineTuningMode;
+        if (navigator.vibrate) navigator.vibrate(50);
+        if (knobCanvas) drawKnob(knobCanvas);
+    }
+
+    // If held still before releasing, kill momentum
+    if (Date.now() - lastDragTime > 50) {
+        outerVelocity = 0;
+        innerVelocity = 0;
+    }
+
+    isDraggingOuterKnob = false;
+    isDraggingInnerKnob = false;
+    isDraggingScale = false;
+    if (scaleCanvas) scaleCanvas.style.cursor = "default";
+    if (knobCanvas) knobCanvas.style.cursor = "default";
+    clearTimeout(finalTuneTimer);
     
-    f = Math.max(FM_MIN, Math.min(FM_MAX, f));
-    f = parseFloat(f.toFixed(3));
-    
-    if (dragFreq !== f) {
-      dragFreq = f; animFreq = f; currentFreq = f;
-      const now = Date.now();
-      if (now - lastTuneTime > TUNE_INTERVAL) { tuneTo(f); lastTuneTime = now; }
-      clearTimeout(finalTuneTimer);
-      finalTuneTimer = setTimeout(() => {
-          const finalF = isFineTuningMode ? parseFloat(dragFreq.toFixed(3)) : snapFreq(dragFreq);
-          tuneTo(finalF);
-      }, 100);
+    if (wasActivelyDragging && dragFreq !== null) {
+        const finalF = isFineTuningMode ? parseFloat(dragFreq.toFixed(3)) : snapFreq(dragFreq);
+        tuneTo(finalF);
     }
   }
 
@@ -451,52 +539,6 @@
         isDraggingScale = true;
         scaleCanvas.style.cursor = "col-resize";
         handleGlobalMove(evt);
-    }
-  }
-
-  function startKnobDrag(evt) {
-    if (!knobCanvas) return;
-    const rect = knobCanvas.getBoundingClientRect();
-    const x = getClientX(evt) - rect.left;
-    const y = getClientY(evt) - rect.top;
-
-    const dx = x - knobX;
-    const dy = y - knobY;
-    const distSq = dx * dx + dy * dy;
-    
-    knobDragMoved = false; 
-
-    if (distSq <= knobInnerR * knobInnerR) {
-        isDraggingInnerKnob = true;
-        lastDragAngle = getAngle(x, y);
-        knobCanvas.style.cursor = "grabbing";
-    } else if (distSq <= knobOuterR * knobOuterR) {
-        isDraggingOuterKnob = true;
-        accumulatedOuterAngle = 0; 
-        lastDragAngle = getAngle(x, y);
-        knobCanvas.style.cursor = "grabbing";
-    }
-  }
-
-  function stopDrag() {
-    const wasActivelyDragging = (isDraggingScale) || ((isDraggingInnerKnob || isDraggingOuterKnob) && knobDragMoved);
-
-    if ((isDraggingInnerKnob || isDraggingOuterKnob) && !knobDragMoved) {
-        isFineTuningMode = !isFineTuningMode;
-        if (navigator.vibrate) navigator.vibrate(50);
-        if (knobCanvas) drawKnob(knobCanvas);
-    }
-
-    isDraggingOuterKnob = false;
-    isDraggingInnerKnob = false;
-    isDraggingScale = false;
-    if (scaleCanvas) scaleCanvas.style.cursor = "default";
-    if (knobCanvas) knobCanvas.style.cursor = "default";
-    clearTimeout(finalTuneTimer);
-    
-    if (wasActivelyDragging && dragFreq !== null) {
-        const finalF = isFineTuningMode ? parseFloat(dragFreq.toFixed(3)) : snapFreq(dragFreq);
-        tuneTo(finalF);
     }
   }
 
@@ -1605,7 +1647,24 @@
     
     if (isVuEnabled && vuCanvas) drawVuMeter(vuCanvas, currentVuLeft, currentVuRight);
 
-    if (!isDraggingScale && !isDraggingOuterKnob && !isDraggingInnerKnob) {
+    // ── Flywheel / Inertia Engine (Knobs spinning down) ──
+    if (!isDraggingOuterKnob && Math.abs(outerVelocity) > 0.001) {
+        outerVelocity *= FRICTION; // Friction slows the wheel
+        applyKnobRotation(true, outerVelocity);
+    } else if (!isDraggingOuterKnob) {
+        outerVelocity = 0;
+    }
+
+    if (!isDraggingInnerKnob && Math.abs(innerVelocity) > 0.001) {
+        innerVelocity *= FRICTION; // Friction slows the wheel
+        applyKnobRotation(false, innerVelocity);
+    } else if (!isDraggingInnerKnob) {
+        innerVelocity = 0;
+    }
+    // ──────────────────────────────────────────────────────
+
+    // Needle trailing smoothly
+    if (!isDraggingScale) {
       const diff = currentFreq - animFreq;
       animFreq += Math.abs(diff) > 0.002 ? diff * SMOOTHING : diff;
     }
@@ -1649,10 +1708,13 @@
       if (!el) { setTimeout(hookFrequency, 500); return; }
 
       const applyFreq = (v) => {
-          if (isDraggingScale || isDraggingOuterKnob || isDraggingInnerKnob) return;
+          // Ignore external updates if we are actively dragging or the wheel is still spinning
+          if (isDraggingScale || isDraggingOuterKnob || isDraggingInnerKnob || Math.abs(outerVelocity) > 0.001 || Math.abs(innerVelocity) > 0.001) return;
           if (!isNaN(v) && v >= FM_MIN && v <= FM_MAX) {
-              currentFreq = v;
-              animFreq = v;
+              if (currentFreq === null) {
+                  animFreq = v; // Initial snap
+              }
+              currentFreq = v; // Target updates, needle follows in renderLoop
           }
       };
 
