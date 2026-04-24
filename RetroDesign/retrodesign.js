@@ -1,18 +1,18 @@
 ////////////////////////////////////////////////////////////
 ///                                                      ///
-///  RETRODESIGN SCRIPT FOR FM-DX-WEBSERVER              ///
+///  RETRODESIGN SCRIPT FOR FM-DX-WEBSERVER     (V1.1)   ///
 ///                                                      ///
-///  by Highpoint                last update: 23.04.25   ///
+///  by Highpoint                last update: 24.04.25   ///
 ///                                                      ///
 ///  https://github.com/Highpoint2000/RetroDesign        ///
 ///                                                      ///
 ////////////////////////////////////////////////////////////
 
 (() => {
-  const PLUGIN_VERSION = "1.0";
-  const PLUGIN_NAME    = "RedroDesign";
-  const pluginHomepageUrl = "https://github.com/Highpoint2000/RedroDesign/releases";
-  const pluginUpdateUrl   = "https://raw.githubusercontent.com/Highpoint2000/RedroDesign/main/RedroDesign/redrodesign.js";
+  const PLUGIN_VERSION = "1.1";
+  const PLUGIN_NAME    = "RetroDesign";
+  const pluginHomepageUrl = "https://github.com/Highpoint2000/RetroDesign/releases";
+  const pluginUpdateUrl   = "https://raw.githubusercontent.com/Highpoint2000/RetroDesign/main/RetroDesign/retrodesign.js";
   const CHECK_FOR_UPDATES = true;
 
   let FM_MIN = 87.5;
@@ -37,6 +37,37 @@
   let animFreq    = null;
   let dragFreq    = null;
   let rafId       = null;
+
+  // --- DYNAMICALLY SUPPRESS SPECTRUM HIGHLIGHTER ---
+  // We slightly override the browser's default drawing function to hide the white cursor line
+  const originalFillRect = CanvasRenderingContext2D.prototype.fillRect;
+  CanvasRenderingContext2D.prototype.fillRect = function(x, y, w, h) {
+      // If the original spectrum is trying to draw AND the Retro Scale is currently visible...
+      if (this.canvas && this.canvas.id === 'sdr-graph' && isVisible) {
+          // ...and it is exactly the highlighter line (which always starts at y = 9)
+          if (y === 9) {
+              return; // Abort! Do not draw the line.
+          }
+      }
+      // Otherwise (or if the Retro Scale is closed), draw normally
+      originalFillRect.call(this, x, y, w, h);
+  };
+  // ---------------------------------------------------
+
+  // ── Performance Optimization State ────────────────────────
+  let lastScaleFrame = 0;
+  let lastMagicEyeFrame = 0;
+  const TARGET_FPS = 30; // Limit animations to 30 frames per second
+  const FRAME_INTERVAL = 1000 / TARGET_FPS;
+
+  // "Dirty checking" memory - only redraw when these values actually change
+  let lastDrawnFreq = -999;
+  let lastDrawnOuterAngle = -999;
+  let lastDrawnInnerAngle = -999;
+  let lastDrawnVuL = -999;
+  let lastDrawnVuR = -999;
+  let lastDrawnMagicEyeLevel = -999;
+  // ──────────────────────────────────────────────────────────
   
   // DOM Elements (Analog Scale)
   let scaleWrap   = null;
@@ -161,30 +192,41 @@
       .catch(e => console.warn("[" + PLUGIN_NAME + "] Update check failed:", e));
   }
 
-  // ── Read CSS variables from the active theme ──────────────
-  function cssVar(name, fallback) {
-    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    return v || fallback;
-  }
+  // ── Read CSS variables from the active theme (MEMORY OPTIMIZED) ──
+  let _cachedTheme = null;
+  let _lastThemeCheck = 0;
 
   function getTheme() {
-    return {
+    const now = Date.now();
+    // Only query the DOM for CSS variables every 2 seconds to prevent Layout Thrashing
+    if (_cachedTheme && (now - _lastThemeCheck < 2000)) {
+        return _cachedTheme;
+    }
+    
+    const cssVar = (name, fallback) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+    _cachedTheme = {
       bg1:     cssVar("--color-1", "#071c33"),
       bg2:     cssVar("--color-2", "#0d2640"),
       accent:  cssVar("--color-4", "#3abf9a"),
       text:    cssVar("--color-text", "#e0e0e0")
     };
+    _lastThemeCheck = now;
+    return _cachedTheme;
   }
 
   const _colorCache = {};
+  // Create ONE single canvas for color parsing, instead of a new one every time (Reduces Garbage Collection)
+  const _parseCanvas = document.createElement("canvas");
+  _parseCanvas.width = 1; _parseCanvas.height = 1;
+  const _parseCtx = _parseCanvas.getContext("2d", { willReadFrequently: true });
+
   function parseColor(cssColor) {
     if (_colorCache[cssColor]) return _colorCache[cssColor];
-    const tmp = document.createElement("canvas");
-    tmp.width = tmp.height = 1;
-    const c = tmp.getContext("2d");
-    c.fillStyle = "#000"; c.fillRect(0,0,1,1);
-    c.fillStyle = cssColor; c.fillRect(0,0,1,1);
-    const d = c.getImageData(0,0,1,1).data;
+    
+    _parseCtx.fillStyle = "#000"; _parseCtx.fillRect(0,0,1,1);
+    _parseCtx.fillStyle = cssColor; _parseCtx.fillRect(0,0,1,1);
+    const d = _parseCtx.getImageData(0,0,1,1).data;
+    
     const result = { r: d[0], g: d[1], b: d[2] };
     _colorCache[cssColor] = result;
     return result;
@@ -215,8 +257,9 @@
       }
       resizeCanvas();
       if (!rafId && isVisible) {
+          lastDrawnFreq = -999; // Force redraw
           drawScale(scaleCanvas, animFreq);
-          if (knobCanvas) drawKnob(knobCanvas);
+          if (knobCanvas) { lastDrawnOuterAngle = -999; drawKnob(knobCanvas); }
       }
   }
 
@@ -298,17 +341,20 @@
     sliderDiv.className = 'panel-full flex-center no-bg m-0';
     sliderDiv.style.flexDirection = 'column';
     sliderDiv.style.marginTop = '15px';
-    sliderDiv.innerHTML = `
-        <span class="text-bold" style="color: var(--color-4); text-transform: uppercase; font-size: 13px; margin-bottom: 5px;">FM Scale Brightness</span>
-        <div style="width: 200px;">
-            <input type="range" id="analog-scale-brightness" min="0.2" max="1.8" step="0.05" value="${currentBrightness}" style="width: 100%; cursor: pointer; margin: 0;">
+	sliderDiv.innerHTML = `
+        <span class="text-bold" style="color: var(--color-4); text-transform: uppercase; font-size: 13px; margin-bottom: 8px; display: block;">FM Scale Brightness</span>
+        <div style="width: 220px;">
+            <input type="range" id="analog-scale-brightness" min="0.2" max="1.8" step="0.05" value="${currentBrightness}">
         </div>
     `;
     const slider = sliderDiv.querySelector('input');
     slider.addEventListener('input', (e) => {
         currentBrightness = parseFloat(e.target.value);
         localStorage.setItem('analog_scale_brightness', currentBrightness);
-        if (!rafId && scaleCanvas && isVisible) drawScale(scaleCanvas, animFreq);
+        if (!rafId && scaleCanvas && isVisible) {
+            lastDrawnFreq = -999; // Force redraw to apply brightness
+            drawScale(scaleCanvas, animFreq);
+        }
     });
     container.appendChild(sliderDiv);
 
@@ -507,7 +553,10 @@
     if ((isDraggingInnerKnob || isDraggingOuterKnob) && !knobDragMoved) {
         isFineTuningMode = !isFineTuningMode;
         if (navigator.vibrate) navigator.vibrate(50);
-        if (knobCanvas) drawKnob(knobCanvas);
+        if (knobCanvas) {
+            lastDrawnOuterAngle = -999; // Force redraw
+            drawKnob(knobCanvas);
+        }
     }
 
     // If held still before releasing, kill momentum
@@ -535,6 +584,31 @@
     const x = getClientX(evt) - rect.left;
     const y = getClientY(evt) - rect.top;
 
+    // --- CHECK: WAS REFRESH CLICKED? ---
+    const sdrBtnClick = document.getElementById('spectrum-graph-button');
+    const isSpecVisibleClick = sdrBtnClick && (sdrBtnClick.classList.contains('active') || sdrBtnClick.classList.contains('bg-color-4'));
+
+    const scanBtnLeft = mX + mW - 75; 
+    const scanBtnRight = mX + mW - 25;
+    const scanBtnTop = mY;
+    const scanBtnBottom = mY + 30;
+
+    // Only allow clicking if the spectrum is actually visible
+    if (isSpecVisibleClick && x >= scanBtnLeft && x <= scanBtnRight && y >= scanBtnTop && y <= scanBtnBottom) {
+        const origBtn = document.getElementById('spectrum-scan-button');
+        if (origBtn) origBtn.click(); // Trigger scan
+
+        window._retroScanClicked = Date.now();
+        
+        // TRICK: Force the scale to redraw every frame for the next 4 seconds 
+        window._forceRedrawUntil = Date.now() + 4000;
+
+        if (typeof animFreq !== 'undefined' && animFreq !== null) drawScale(scaleCanvas, animFreq);
+        return; // Prevents the scale from being grabbed!
+    }
+    // ------------------------------------
+
+    // Normal grabbing function for the scale
     if (x >= mX && x <= mX + mW && y >= mY && y <= mY + mH) {
         isDraggingScale = true;
         scaleCanvas.style.cursor = "col-resize";
@@ -842,6 +916,53 @@
     rrect(ctx, paperX, paperY, paperW, paperH, 2);
     ctx.fill();
 
+    // --- START SPECTRUM OVERLAY ---
+    try {
+        const sdrCanvas = document.getElementById('sdr-graph');
+        const specBtn = document.getElementById('spectrum-graph-button');
+        
+        const isSpecActive = specBtn && (specBtn.classList.contains('active') || specBtn.classList.contains('bg-color-4'));
+
+        if (sdrCanvas && isSpecActive && sdrCanvas.width > 100) {
+            
+            const scaleStartX = paperX + paperW * 0.04;
+            const scaleWidth = paperW * 0.92;
+            const scaleBaseY = paperY + paperH * 0.85;
+
+            const signalText = localStorage.getItem('signalUnit') || 'dbf';
+            let sdrXOffset = (signalText === 'dbm') ? 36 : 30;
+
+            const srcX = sdrXOffset + 1;
+            const srcY = 16; 
+            const srcW = sdrCanvas.width - sdrXOffset - 2;
+            const srcH = sdrCanvas.height - 40; 
+
+            const destX = scaleStartX;
+            const destY = paperY + 2; 
+            const destW = scaleWidth;
+            const destH = (scaleBaseY - paperY) - 2;
+
+            if (srcW > 0 && srcH > 0) {
+                ctx.save();
+                
+                rrect(ctx, paperX, paperY, paperW, paperH, 2);
+                ctx.clip();
+
+                // Apply shadow filter
+                ctx.filter = 'invert(1) grayscale(1) contrast(2.0) brightness(0.9)';
+                ctx.globalAlpha = 0.3; 
+                ctx.globalCompositeOperation = 'multiply';
+
+                ctx.drawImage(sdrCanvas, srcX, srcY, srcW, srcH, destX, destY, destW, destH);
+
+                ctx.restore();
+            }
+        }
+    } catch (e) {
+        console.warn("[RetroDesign] Error rendering spectrum background:", e);
+    }
+    // --- END SPECTRUM OVERLAY ---
+
     const tX    = paperX + paperW * 0.04;
     const tW    = paperW * 0.92;
     const baseY = paperY + paperH * 0.85;  
@@ -902,6 +1023,26 @@
     ctx.font = smallLabelFont;
     ctx.fillStyle = inkColor; 
     ctx.fillText("MHz", paperX + paperW - 8, topTextY);
+
+    // --- START: PRINTED SCAN BUTTON ---
+    const sdrBtnDraw = document.getElementById('spectrum-graph-button');
+    const isSpecVisible = sdrBtnDraw && (sdrBtnDraw.classList.contains('active') || sdrBtnDraw.classList.contains('bg-color-4'));
+
+    if (isSpecVisible) {
+        ctx.font = `700 ${lblSize * 0.65}px Arial, sans-serif`; // Slightly larger for the symbol
+        let scanColor = inkFaded;
+        
+        // Visual feedback: Red when clicked, darker ink when hovered
+        if (window._retroScanClicked && Date.now() - window._retroScanClicked < 150) {
+            scanColor = "#ff3300"; 
+        } else if (window._retroScanHovered) {
+            scanColor = inkColor; 
+        }
+        
+        ctx.fillStyle = scanColor; 
+        ctx.fillText("↻  ", paperX + paperW - 35, topTextY - 1); // Using Unicode Refresh Symbol
+    }
+    // --- END: PRINTED SCAN BUTTON ---
 
     const nx = fX(Math.max(FM_MIN, Math.min(FM_MAX, freq)));
 
@@ -1291,28 +1432,44 @@
       if (signalPanel.dataset.magicEyeInit === "true") return;
       signalPanel.dataset.magicEyeInit = "true";
 
+      const rowWrapper = document.createElement('div');
+      rowWrapper.className = 'magic-eye-row-wrapper';
+      rowWrapper.style.display = "flex";
+      rowWrapper.style.alignItems = "center";
+      // Center the entire group so the Eye and Text stay close together
+      rowWrapper.style.justifyContent = "center"; 
+      rowWrapper.style.width = "100%";
+      rowWrapper.style.minWidth = "0"; 
+      rowWrapper.style.overflow = "hidden"; 
+
       const textWrapper = document.createElement('div');
       textWrapper.className = 'magic-eye-text-wrapper';
-      textWrapper.style.flex = "1";
-      textWrapper.style.minWidth = "0"; 
       
-      while (signalPanel.firstChild) {
-          textWrapper.appendChild(signalPanel.firstChild);
-      }
+      // Fixed 55% width -> completely stops jitter and prevents it from pushing the Eye too far left
+      textWrapper.style.flex = "0 0 55%"; 
+      textWrapper.style.minWidth = "0"; 
+      textWrapper.style.overflow = "hidden"; 
+      textWrapper.style.whiteSpace = "nowrap"; 
+      textWrapper.style.textAlign = "center"; 
+      
+      const children = Array.from(signalPanel.childNodes);
+      children.forEach(child => {
+          if (child.id === 'cci-aci-container') return;
+          textWrapper.appendChild(child);
+      });
 
       signalPanel.classList.add('magic-eye-panel-override');
-      signalPanel.style.display = "flex";
-      signalPanel.style.alignItems = "center";
-      signalPanel.style.justifyContent = "flex-start"; 
 
       const wrapper = document.createElement('div');
       wrapper.id = "magic-eye-wrapper"; 
-      wrapper.style.width = "95px";  
-      wrapper.style.height = "95px";
-      wrapper.style.flexShrink = "0";
+      
+      wrapper.style.flex = "0 1 85px"; 
+      wrapper.style.maxWidth = "30%"; 
+      wrapper.style.aspectRatio = "1 / 1"; 
+      wrapper.style.height = "auto";
       wrapper.style.position = "relative";
-      wrapper.style.marginRight = "0px"; 
-      wrapper.style.marginLeft = "30px";
+      wrapper.style.marginRight = "2%"; 
+      wrapper.style.marginLeft = "4%"; 
 
       if (!isMagicEyeEnabled) wrapper.classList.add('magic-eye-hidden');
       
@@ -1320,21 +1477,30 @@
       magicEyeCanvas.id = 'magic-eye-canvas';
       magicEyeCanvas.style.width = '100%';
       magicEyeCanvas.style.height = '100%';
+      magicEyeCanvas.style.display = 'block'; 
       wrapper.appendChild(magicEyeCanvas);
 
-      signalPanel.appendChild(wrapper);
-      signalPanel.appendChild(textWrapper);
+      rowWrapper.appendChild(wrapper);
+      rowWrapper.appendChild(textWrapper);
+      signalPanel.appendChild(rowWrapper);
 
       magicEyeLightCanvas = document.createElement('canvas');
 
       requestAnimationFrame(updateMagicEyeLoop);
   }
 
-  function updateMagicEyeLoop() {
+  function updateMagicEyeLoop(timestamp) {
       if (!isMagicEyeEnabled || !magicEyeCanvas || !magicEyeLightCanvas) {
           requestAnimationFrame(updateMagicEyeLoop);
           return;
       }
+
+      // FPS Limit for CPU optimization
+      if (timestamp && timestamp - lastMagicEyeFrame < FRAME_INTERVAL) {
+          requestAnimationFrame(updateMagicEyeLoop);
+          return;
+      }
+      lastMagicEyeFrame = timestamp || performance.now();
 
       tryInitAudio();
       
@@ -1373,7 +1539,6 @@
 
       let audioPulse = 0;
       if (audioInitialized && audioCtx && audioCtx.state === 'running' && dataL) {
-          // Re-use dataL from the common pool to compute an RMS for the pulse
           analyserL.getFloatTimeDomainData(dataL);
           let sum = 0;
           for (let i = 0; i < dataL.length; i++) { sum += dataL[i] * dataL[i]; }
@@ -1389,17 +1554,21 @@
       const h = magicEyeCanvas.parentElement.offsetHeight;
 
       if (w > 0 && h > 0) {
-          magicEyeCanvas.width = w * dpr;
-          magicEyeCanvas.height = h * dpr;
-          magicEyeLightCanvas.width = magicEyeCanvas.width;
-          magicEyeLightCanvas.height = magicEyeCanvas.height;
-          
-          const ctx = magicEyeCanvas.getContext('2d');
-          const lCtx = magicEyeLightCanvas.getContext('2d');
-          ctx.scale(dpr, dpr);
-          lCtx.scale(dpr, dpr);
-          
-          drawExtremeGlowTube(ctx, lCtx, w, h, magicEyeLevel);
+          // ONLY REDRAW IF LEVEL CHANGED OR RESIZED (Massive CPU/RAM saver)
+          if (Math.abs(magicEyeLevel - lastDrawnMagicEyeLevel) > 0.005 || magicEyeCanvas.width !== Math.round(w * dpr)) {
+              magicEyeCanvas.width = Math.round(w * dpr);
+              magicEyeCanvas.height = Math.round(h * dpr);
+              magicEyeLightCanvas.width = magicEyeCanvas.width;
+              magicEyeLightCanvas.height = magicEyeCanvas.height;
+              
+              const ctx = magicEyeCanvas.getContext('2d');
+              const lCtx = magicEyeLightCanvas.getContext('2d');
+              ctx.scale(dpr, dpr);
+              lCtx.scale(dpr, dpr);
+              
+              drawExtremeGlowTube(ctx, lCtx, w, h, magicEyeLevel);
+              lastDrawnMagicEyeLevel = magicEyeLevel;
+          }
       }
       
       requestAnimationFrame(updateMagicEyeLoop);
@@ -1544,7 +1713,7 @@
       ctx.save();
       ctx.beginPath();
       ctx.arc(cx, cy, innerR, 0, Math.PI * 2);
-      ctx.clip();
+      ctx.clip(); 
 
       ctx.fillStyle = "#010401"; 
       ctx.fillRect(0, 0, w, h);
@@ -1628,9 +1797,16 @@
   }
 
   // ── Scale Render Loop ──────────────────────────────────────
-  function renderLoop() {
+  function renderLoop(timestamp) {
     if (!scaleCanvas || !isVisible) { rafId = null; return; }
     
+    // FPS Limit
+    if (timestamp && timestamp - lastScaleFrame < FRAME_INTERVAL) {
+        rafId = requestAnimationFrame(renderLoop);
+        return;
+    }
+    lastScaleFrame = timestamp || performance.now();
+
     tryInitAudio();
     let targetL = 0; let targetR = 0;
 
@@ -1645,7 +1821,14 @@
     currentVuLeft += (targetL > currentVuLeft) ? (targetL - currentVuLeft) * attack : (targetL - currentVuLeft) * decay;
     currentVuRight += (targetR > currentVuRight) ? (targetR - currentVuRight) * attack : (targetR - currentVuRight) * decay;
     
-    if (isVuEnabled && vuCanvas) drawVuMeter(vuCanvas, currentVuLeft, currentVuRight);
+    if (isVuEnabled && vuCanvas) {
+        // ONLY REDRAW VU METER IF LEVELS CHANGED (CPU Saver)
+        if (Math.abs(currentVuLeft - lastDrawnVuL) > 0.005 || Math.abs(currentVuRight - lastDrawnVuR) > 0.005) {
+            drawVuMeter(vuCanvas, currentVuLeft, currentVuRight);
+            lastDrawnVuL = currentVuLeft;
+            lastDrawnVuR = currentVuRight;
+        }
+    }
 
     // ── Flywheel / Inertia Engine (Knobs spinning down) ──
     if (!isDraggingOuterKnob && Math.abs(outerVelocity) > 0.001) {
@@ -1669,8 +1852,22 @@
       animFreq += Math.abs(diff) > 0.002 ? diff * SMOOTHING : diff;
     }
     
-    drawScale(scaleCanvas, animFreq);
-    if (knobCanvas) drawKnob(knobCanvas);
+    // ONLY REDRAW SCALE IF FREQUENCY MOVED *OR* IF A SCAN WAS JUST TRIGGERED
+    const isForcedRedraw = window._forceRedrawUntil && Date.now() < window._forceRedrawUntil;
+    
+    if (Math.abs(animFreq - lastDrawnFreq) > 0.001 || isForcedRedraw) {
+        drawScale(scaleCanvas, animFreq);
+        lastDrawnFreq = animFreq;
+    }
+
+    // ONLY REDRAW KNOBS IF THEY ROTATED
+    if (knobCanvas) {
+        if (Math.abs(outerKnobAngle - lastDrawnOuterAngle) > 0.005 || Math.abs(innerKnobAngle - lastDrawnInnerAngle) > 0.005) {
+            drawKnob(knobCanvas);
+            lastDrawnOuterAngle = outerKnobAngle;
+            lastDrawnInnerAngle = innerKnobAngle;
+        }
+    }
     
     rafId = requestAnimationFrame(renderLoop);
   }
@@ -1700,6 +1897,14 @@
     vuCanvas.height    = Math.round(vH * dpr);
 
     updateMetrics(sW, sH, kW);
+
+    // FORCE ALL ELEMENTS TO REDRAW IMMEDIATELY UPON RESIZE
+    lastDrawnFreq = -999;
+    lastDrawnOuterAngle = -999;
+    lastDrawnInnerAngle = -999;
+    lastDrawnVuL = -999;
+    lastDrawnVuR = -999;
+    lastDrawnMagicEyeLevel = -999;
   }
 
   // ── Frequency hook ────────────────────────────────────────
@@ -1847,12 +2052,49 @@
         const rect = scaleCanvas.getBoundingClientRect();
         const x = evt.clientX - rect.left;
         const y = evt.clientY - rect.top;
-        if (x >= mX && x <= mX + mW && y >= mY && y <= mY + mH) {
+        
+        // 1. CHECK: IS MOUSE OVER THE REFRESH AREA?
+        const sdrBtnHover = document.getElementById('spectrum-graph-button');
+        const isSpecVisibleHover = sdrBtnHover && (sdrBtnHover.classList.contains('active') || sdrBtnHover.classList.contains('bg-color-4'));
+
+        const scanBtnLeft = mX + mW - 75;
+        const scanBtnRight = mX + mW - 25;
+        const scanBtnTop = mY;
+        const scanBtnBottom = mY + 30;
+
+        if (isSpecVisibleHover && x >= scanBtnLeft && x <= scanBtnRight && y >= scanBtnTop && y <= scanBtnBottom) {
+            scaleCanvas.style.cursor = "pointer";
+            if (!window._retroScanHovered) {
+                window._retroScanHovered = true;
+                if (typeof animFreq !== 'undefined' && animFreq !== null) drawScale(scaleCanvas, animFreq);
+            }
+            return;
+        } else {
+            if (window._retroScanHovered) {
+                window._retroScanHovered = false;
+                if (typeof animFreq !== 'undefined' && animFreq !== null) drawScale(scaleCanvas, animFreq);
+            }
+        }
+
+        // 2. CHECK: IS MOUSE DIRECTLY OVER THE RED NEEDLE?
+        const paperX = mX + 2;
+        const paperW = mW - 4;
+        const tX = paperX + paperW * 0.04;
+        const tW = paperW * 0.92;
+        
+        // Calculate the current visual X position of the needle
+        const needleX = tX + ((animFreq - FM_MIN) / (FM_MAX - FM_MIN)) * tW;
+        
+        // Define a "grab zone" of 10 pixels to the left and right of the needle
+        const isOverNeedle = (x >= needleX - 10 && x <= needleX + 10 && y >= mY && y <= mY + mH);
+
+        if (isOverNeedle) {
             scaleCanvas.style.cursor = "ew-resize";
         } else {
             scaleCanvas.style.cursor = "default";
         }
     });
+
     scaleCanvas.addEventListener("mousedown",  startScaleDrag);
     scaleCanvas.addEventListener("touchstart", startScaleDrag, { passive: false });
 
@@ -2016,7 +2258,7 @@
 
   // ── Start ─────────────────────────────────────────────────
   function start() {
-    // Inject responsive CSS for Magic Eye
+// Inject unified CSS for Magic Eye and Range Slider
     if (!document.getElementById('magic-eye-responsive-styles')) {
         const style = document.createElement('style');
         style.id = 'magic-eye-responsive-styles';
@@ -2027,6 +2269,69 @@
                 .magic-eye-text-wrapper { display: contents !important; }
             }
             .magic-eye-hidden { display: none !important; }
+
+            /* --- Unified Range Slider Fix (Chrome & Firefox) --- */
+            #analog-scale-brightness {
+                -webkit-appearance: none;
+                -moz-appearance: none;
+                appearance: none;
+                width: 100%;
+                height: 24px; /* Höhe des Containers */
+                background: transparent;
+                cursor: pointer;
+            }
+
+            /* Track (Die Schiene) - Firefox */
+            #analog-scale-brightness::-moz-range-track {
+                width: 100%;
+                height: 24px;
+                background: rgba(58, 191, 154, 0.5); /* Akzentfarbe transparent */
+                border-radius: 12px;
+                border: none;
+            }
+
+/* --- Unified Range Slider Fix (Chrome & Firefox) --- */
+#analog-scale-brightness {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 24px;
+    background: transparent !important; /* Entfernt den grünen Kasten in Firefox */
+    cursor: pointer;
+    border: none;
+}
+
+/* Track (Die Schiene) - Firefox */
+#analog-scale-brightness::-moz-range-track {
+    width: 100%;
+    height: 24px;
+    /* Hier definieren wir die Schienenfarbe (Dunkelgrün/Grau) */
+    background: rgba(58, 191, 154, 0.2); 
+    border-radius: 12px;
+    border: none;
+}
+
+/* Track - Chrome/Safari */
+#analog-scale-brightness::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 24px;
+    background: rgba(58, 191, 154, 0.2);
+    border-radius: 12px;
+}
+
+            /* Thumb - Chrome/Safari */
+            #analog-scale-brightness::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                width: 40px;
+                height: 24px;
+                background: var(--color-4, #3abf9a);
+                border-radius: 12px;
+                margin-top: 0px; /* Zentrierung auf Track */
+                background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.5)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>');
+                background-repeat: no-repeat;
+                background-position: center;
+            }
         `;
         document.head.appendChild(style);
     }
@@ -2052,7 +2357,7 @@
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => setTimeout(start, 1000));
+    document.addEventListener("DOMContentLoaded", () => setTimeout(start, 2000));
   } else {
     setTimeout(start, 2000);
   }

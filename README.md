@@ -3,14 +3,12 @@ Analog frequency display, manual frequency rotary control and VU meter, as well 
 
 <img width="1310" height="874" alt="Screenshot 2026-04-23 121834" src="https://github.com/user-attachments/assets/a64b406f-f430-4e2b-a3b9-609e0f6777c8" />
 
-## Version 1.0
+## Version 1.1
 
-- Dynamic Theme Adaptation: Automatically synchronizes scale colors and lighting with the active web server CSS theme.
-- Integrated UI Settings: Adds toggles for Autostart, Analog VU Meter, and Magic Eye, plus a Brightness slider, directly to the modal menu.
-- Dual Analog VU Meter: Side-by-side meters for left and right audio channels with realistic ballistics
-- Magic Eye: Real-time signal and audio-modulated tuning indicator based on vintage cathode-ray tube behavior
-- Fine Tuning Mode: Toggleable high-precision tuning (10x smaller steps) with visual dimple color feedback.
-- Automatic Frequency Limits: Detects FM limits from the server config to ensure accurate scale calibration.
+- Integration of the Spectrum plugin
+- Slider customization for Firefox browser
+- Dynamic resizing of the Magic Eye
+- Performance optimizations
 
 ### Note: [Enhanced Tuning](https://github.com/Overland-DX/Enhanced-Tuning) users do not need this plugin, as it is already an extended component in newer versions there! The analog frequency display is designed for FM use only. AM users, please install the Enhanced Tuning Plugin!
  
@@ -30,6 +28,7 @@ Analog frequency display, manual frequency rotary control and VU meter, as well 
 - Grid Snapping: Double-click the inner knob to instantly snap the frequency to the nearest standard 0.1 MHz grid.
 - Autostart Toggle: Enable or disable the automatic launch of the FM Scale upon page load.
 - Visual Component Toggles: Independently turn the Analog VU Meter and the Magic Eye on or off according to your preference.
+- Spectrum Plugin Integration: Make sure the spectrum plugin is active, then activate the FM scale. To refresh the spectrum, use the refresh icon that appears.
  
 ## Contact
 
@@ -40,3 +39,11 @@ If you have any questions, would like to report problems, or have suggestions fo
 <details>
 <summary>History</summary>
 
+### Version 1.0
+
+- Dynamic Theme Adaptation: Automatically synchronizes scale colors and lighting with the active web server CSS theme.
+- Integrated UI Settings: Adds toggles for Autostart, Analog VU Meter, and Magic Eye, plus a Brightness slider, directly to the modal menu.
+- Dual Analog VU Meter: Side-by-side meters for left and right audio channels with realistic ballistics
+- Magic Eye: Real-time signal and audio-modulated tuning indicator based on vintage cathode-ray tube behavior
+- Fine Tuning Mode: Toggleable high-precision tuning (10x smaller steps) with visual dimple color feedback.
+- Automatic Frequency Limits: Detects FM limits from the server config to ensure accurate scale calibration.
