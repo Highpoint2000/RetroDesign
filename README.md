@@ -9,6 +9,7 @@ Analog frequency display, manual frequency rotary control and VU meter, as well 
 - Integration of the Spectrum plugin
 - Slider customization for Firefox browser
 - Dynamic resizing of the Magic Eye
+- Design switching now occurs without a reload
 - Performance optimizations
 
 ### Note: [Enhanced Tuning](https://github.com/Overland-DX/Enhanced-Tuning) users do not need this plugin, as it is already an extended component in newer versions there! The analog frequency display is designed for FM use only. AM users, please install the Enhanced Tuning Plugin!
