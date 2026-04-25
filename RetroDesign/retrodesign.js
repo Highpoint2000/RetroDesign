@@ -2256,9 +2256,9 @@
     if (t) t.appendChild(btn);
   }
 
-  // ── Start ─────────────────────────────────────────────────
+// ── Start ─────────────────────────────────────────────────
   function start() {
-// Inject unified CSS for Magic Eye and Range Slider
+    // Inject unified CSS for Magic Eye and Range Slider
     if (!document.getElementById('magic-eye-responsive-styles')) {
         const style = document.createElement('style');
         style.id = 'magic-eye-responsive-styles';
@@ -2276,49 +2276,28 @@
                 -moz-appearance: none;
                 appearance: none;
                 width: 100%;
-                height: 24px; /* Höhe des Containers */
-                background: transparent;
+                height: 24px;
+                background: transparent !important;
                 cursor: pointer;
+                border: none;
             }
 
             /* Track (Die Schiene) - Firefox */
             #analog-scale-brightness::-moz-range-track {
                 width: 100%;
                 height: 24px;
-                background: rgba(58, 191, 154, 0.5); /* Akzentfarbe transparent */
+                background: rgba(58, 191, 154, 0.2); 
                 border-radius: 12px;
                 border: none;
             }
 
-/* --- Unified Range Slider Fix (Chrome & Firefox) --- */
-#analog-scale-brightness {
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
-    width: 100%;
-    height: 24px;
-    background: transparent !important; /* Entfernt den grünen Kasten in Firefox */
-    cursor: pointer;
-    border: none;
-}
-
-/* Track (Die Schiene) - Firefox */
-#analog-scale-brightness::-moz-range-track {
-    width: 100%;
-    height: 24px;
-    /* Hier definieren wir die Schienenfarbe (Dunkelgrün/Grau) */
-    background: rgba(58, 191, 154, 0.2); 
-    border-radius: 12px;
-    border: none;
-}
-
-/* Track - Chrome/Safari */
-#analog-scale-brightness::-webkit-slider-runnable-track {
-    width: 100%;
-    height: 24px;
-    background: rgba(58, 191, 154, 0.2);
-    border-radius: 12px;
-}
+            /* Track - Chrome/Safari */
+            #analog-scale-brightness::-webkit-slider-runnable-track {
+                width: 100%;
+                height: 24px;
+                background: rgba(58, 191, 154, 0.2);
+                border-radius: 12px;
+            }
 
             /* Thumb - Chrome/Safari */
             #analog-scale-brightness::-webkit-slider-thumb {
@@ -2327,7 +2306,7 @@
                 height: 24px;
                 background: var(--color-4, #3abf9a);
                 border-radius: 12px;
-                margin-top: 0px; /* Zentrierung auf Track */
+                margin-top: 0px; 
                 background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.5)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>');
                 background-repeat: no-repeat;
                 background-position: center;
@@ -2344,6 +2323,41 @@
     setTimeout(initMagicEye, 1000);
 
     console.log(`[${PLUGIN_NAME}] v${PLUGIN_VERSION} loaded.`);
+
+    // --- Instant Theme Update Hook (Fixed Timing) ---
+    const forceThemeRedraw = () => {
+        // 1. Clear the color cache so getTheme() fetches the new CSS variables
+        _cachedTheme = null;
+        _lastThemeCheck = 0;
+
+        // 2. Invalidate the "dirty checking" memory to force a full redraw on the next frame
+        lastDrawnFreq = -999;
+        lastDrawnOuterAngle = -999;
+        lastDrawnInnerAngle = -999;
+        lastDrawnVuL = -999;
+        lastDrawnVuR = -999;
+        lastDrawnMagicEyeLevel = -999;
+    };
+
+    // Method 1: Listen for clicks directly on the theme dropdown options
+    const themeSelector = document.getElementById('theme-selector');
+    if (themeSelector) {
+        const options = themeSelector.querySelectorAll('.option');
+        options.forEach(option => {
+            option.addEventListener('click', () => {
+                // Wait 150ms to allow the main webserver script to update the DOM's CSS variables first
+                setTimeout(forceThemeRedraw, 150);
+            });
+        });
+    }
+
+    // Method 2: Global Fallback - watch the HTML/Body tags for theme class/style changes
+    const themeObserver = new MutationObserver(() => {
+        setTimeout(forceThemeRedraw, 150);
+    });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] });
+    themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] });
+    // ---------------------------------
 
     if (CHECK_FOR_UPDATES) {
       _checkUpdate();
