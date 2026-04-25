@@ -861,7 +861,7 @@
       ctx.restore(); 
   }
 
-  function drawScale(canvas, freq) {
+function drawScale(canvas, freq) {
     const dpr = window.devicePixelRatio || 1;
     const ctx = canvas.getContext("2d");
     const CW  = canvas.width  / dpr;
@@ -873,6 +873,14 @@
 
     let dRange = FM_MAX - FM_MIN;
     let lblStep = 2, majStep = 2, midStep = 1, minStep = 0.1;
+
+    // --- Dynamische Skalen-Anpassung für kleine Frequenzbänder ---
+    if (dRange <= 15) {
+        lblStep = 1;   // Jede 1 MHz beschriften (z.B. 66, 67, 68...)
+        majStep = 1;   // Großer Strich für jede 1 MHz
+        midStep = 0.5; // Mittlerer Strich für jede 0.5 MHz
+    }
+    // -------------------------------------------------------------
 
     ctx.save();
     ctx.scale(dpr, dpr);
