@@ -4,13 +4,14 @@ Analog frequency display, manual frequency rotary control and VU meter, as well 
 <img width="1331" height="888" alt="Screenshot 2026-04-24 235619" src="https://github.com/user-attachments/assets/f55f8175-4662-4db0-9adb-36703ff5e764" />
 
 
-## Version 1.1
+## Version 1.2
 
-- Integration of the Spectrum plugin
-- Slider customization for Firefox browser
-- Dynamic resizing of the Magic Eye
-- Design switching now occurs without a reload
-- Performance optimizations
+- Automatic PS display names added as a stepped display below the scale; can be deactivated in the web server's side menu.
+- Automatic deletion of individual PS entries after 3 seconds if the frequency is empty.
+- Added a delete button to globally reset all saved PS entries.
+- Mouseover over a PS entry displays saved TX information and last seen information.
+- Added support for arrow keys to control the frequency via the keyboard, enabling the use of external wheelsets (e.g., Ulanzi Dial D100H).
+
 
 ### Note: [Enhanced Tuning](https://github.com/Overland-DX/Enhanced-Tuning) users do not need this plugin, as it is already an extended component in newer versions there! The analog frequency display is designed for FM use only. AM users, please install the Enhanced Tuning Plugin!
  
@@ -31,6 +32,14 @@ Analog frequency display, manual frequency rotary control and VU meter, as well 
 - Autostart Toggle: Enable or disable the automatic launch of the FM Scale upon page load.
 - Visual Component Toggles: Independently turn the Analog VU Meter and the Magic Eye on or off according to your preference.
 - Spectrum Plugin Integration: Make sure the spectrum plugin is active, then activate the FM scale. To refresh the spectrum, use the refresh icon that appears.
+
+### PS Scale
+
+- PS entries are automatically displayed in a stepped format below the frequency display
+- Mouseover over a PS entry displays saved TX information and last seen information
+- PS entries are automatically deleted after 3 seconds if the frequency is empty
+- The X on the left deletes all saved PS entries
+
  
 ## Contact
 
@@ -40,6 +49,14 @@ If you have any questions, would like to report problems, or have suggestions fo
 
 <details>
 <summary>History</summary>
+
+### Version 1.1
+
+- Integration of the Spectrum plugin
+- Slider customization for Firefox browser
+- Dynamic resizing of the Magic Eye
+- Design switching now occurs without a reload
+- Performance optimizations
 
 ### Version 1.0
 

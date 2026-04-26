@@ -1,15 +1,15 @@
 ////////////////////////////////////////////////////////////
 ///                                                      ///
-///  RETRODESIGN SCRIPT FOR FM-DX-WEBSERVER     (V1.1)   ///
+///  RETRODESIGN SCRIPT FOR FM-DX-WEBSERVER     (V1.2)   ///
 ///                                                      ///
-///  by Highpoint                last update: 24.04.25   ///
+///  by Highpoint                last update: 26.04.25   ///
 ///                                                      ///
 ///  https://github.com/Highpoint2000/RetroDesign        ///
 ///                                                      ///
 ////////////////////////////////////////////////////////////
 
 (() => {
-  const PLUGIN_VERSION = "1.1";
+  const PLUGIN_VERSION = "1.2";
   const PLUGIN_NAME    = "RetroDesign";
   const pluginHomepageUrl = "https://github.com/Highpoint2000/RetroDesign/releases";
   const pluginUpdateUrl   = "https://raw.githubusercontent.com/Highpoint2000/RetroDesign/main/RetroDesign/retrodesign.js";
@@ -38,18 +38,18 @@
   let dragFreq    = null;
   let rafId       = null;
 
+  // Hitboxes for dynamically rendered station names
+  let renderedStations = [];
+
   // --- DYNAMICALLY SUPPRESS SPECTRUM HIGHLIGHTER ---
   // We slightly override the browser's default drawing function to hide the white cursor line
   const originalFillRect = CanvasRenderingContext2D.prototype.fillRect;
   CanvasRenderingContext2D.prototype.fillRect = function(x, y, w, h) {
-      // If the original spectrum is trying to draw AND the Retro Scale is currently visible...
       if (this.canvas && this.canvas.id === 'sdr-graph' && isVisible) {
-          // ...and it is exactly the highlighter line (which always starts at y = 9)
           if (y === 9) {
-              return; // Abort! Do not draw the line.
+              return; 
           }
       }
-      // Otherwise (or if the Retro Scale is closed), draw normally
       originalFillRect.call(this, x, y, w, h);
   };
   // ---------------------------------------------------
@@ -57,17 +57,16 @@
   // ── Performance Optimization State ────────────────────────
   let lastScaleFrame = 0;
   let lastMagicEyeFrame = 0;
-  const TARGET_FPS = 30; // Limit animations to 30 frames per second
+  const TARGET_FPS = 30; 
   const FRAME_INTERVAL = 1000 / TARGET_FPS;
 
-  // "Dirty checking" memory - only redraw when these values actually change
+  // "Dirty checking" memory
   let lastDrawnFreq = -999;
   let lastDrawnOuterAngle = -999;
   let lastDrawnInnerAngle = -999;
   let lastDrawnVuL = -999;
   let lastDrawnVuR = -999;
   let lastDrawnMagicEyeLevel = -999;
-  // ──────────────────────────────────────────────────────────
   
   // DOM Elements (Analog Scale)
   let scaleWrap   = null;
@@ -81,11 +80,11 @@
   let magicEyeLevel = 0;
 
   // ── Settings State ────────────────────────────────────────
-  // Default to true if not explicitly set to 'false'
-  let isAutostart       = localStorage.getItem('analog_scale_autostart') !== 'false';
-  let isVuEnabled       = localStorage.getItem('analog_vu_enabled') !== 'false';
-  let isMagicEyeEnabled = localStorage.getItem('magic_eye_enabled') !== 'false';
-  let currentBrightness = parseFloat(localStorage.getItem('analog_scale_brightness')) || 1.50;
+  let isAutostart          = localStorage.getItem('analog_scale_autostart') !== 'false';
+  let isShowPsScaleEnabled = localStorage.getItem('show_ps_scale_enabled') !== 'false';
+  let isVuEnabled          = localStorage.getItem('analog_vu_enabled') !== 'false';
+  let isMagicEyeEnabled    = localStorage.getItem('magic_eye_enabled') !== 'false';
+  let currentBrightness    = parseFloat(localStorage.getItem('analog_scale_brightness')) || 1.50;
 
   // ── Drag / Tune state ─────────────────────────────────────
   let isDraggingScale = false;
@@ -109,12 +108,12 @@
   // ── Flywheel / Inertia State ──────────────────────────────
   let outerVelocity = 0;
   let innerVelocity = 0;
-  const FRICTION = 0.90; // Friction: 0.90 to 0.98 (higher = spins longer)
+  const FRICTION = 0.90; 
   let lastDragTime = 0;
 
   // ── Layout Metrics ─────────────────────────────────────────
-  let mX, mY, mW, mH; // Scale window bounds
-  let knobX, knobY, knobOuterR, knobInnerR; // Knob bounds
+  let mX, mY, mW, mH; 
+  let knobX, knobY, knobOuterR, knobInnerR; 
 
   // ── Audio Variables for VU & Magic Eye ─────────────────────
   let audioInitialized = false;
@@ -192,13 +191,12 @@
       .catch(e => console.warn("[" + PLUGIN_NAME + "] Update check failed:", e));
   }
 
-  // ── Read CSS variables from the active theme (MEMORY OPTIMIZED) ──
+  // ── Read CSS variables from the active theme ──
   let _cachedTheme = null;
   let _lastThemeCheck = 0;
 
   function getTheme() {
     const now = Date.now();
-    // Only query the DOM for CSS variables every 2 seconds to prevent Layout Thrashing
     if (_cachedTheme && (now - _lastThemeCheck < 2000)) {
         return _cachedTheme;
     }
@@ -215,7 +213,6 @@
   }
 
   const _colorCache = {};
-  // Create ONE single canvas for color parsing, instead of a new one every time (Reduces Garbage Collection)
   const _parseCanvas = document.createElement("canvas");
   _parseCanvas.width = 1; _parseCanvas.height = 1;
   const _parseCtx = _parseCanvas.getContext("2d", { willReadFrequently: true });
@@ -250,14 +247,13 @@
           vuDiv.style.display = "block";
           vuDiv.style.flex = "0 0 30%"; 
       } else {
-          // Hide VU and extend Scale width to fill the gap
           scaleDiv.style.flex = "0 0 88%";
           knobDiv.style.flex = "0 0 12%";
           vuDiv.style.display = "none";
       }
       resizeCanvas();
       if (!rafId && isVisible) {
-          lastDrawnFreq = -999; // Force redraw
+          lastDrawnFreq = -999; 
           drawScale(scaleCanvas, animFreq);
           if (knobCanvas) { lastDrawnOuterAngle = -999; drawKnob(knobCanvas); }
       }
@@ -297,7 +293,6 @@
     container.style.borderTop = '1px solid rgba(255,255,255,0.1)';
     container.style.paddingTop = '15px';
 
-    // Helper to clone standard webserver settings switches
     function addToggle(id, labelText, checkedState, onChange) {
         const clone = baseWrapper.cloneNode(true);
         const input = clone.querySelector('input');
@@ -323,6 +318,15 @@
     addToggle('analog-scale-autostart', 'AUTOSTART FM SCALE', isAutostart, (e) => {
         isAutostart = e.target.checked;
         localStorage.setItem('analog_scale_autostart', isAutostart);
+    });
+
+    addToggle('show-ps-scale-toggle', 'SHOW PS SCALE', isShowPsScaleEnabled, (e) => {
+        isShowPsScaleEnabled = e.target.checked;
+        localStorage.setItem('show_ps_scale_enabled', isShowPsScaleEnabled);
+        if (!rafId && scaleCanvas && isVisible) {
+            lastDrawnFreq = -999;
+            drawScale(scaleCanvas, animFreq);
+        }
     });
 
     addToggle('analog-vu-toggle', 'ENABLE VU METER', isVuEnabled, (e) => {
@@ -352,7 +356,7 @@
         currentBrightness = parseFloat(e.target.value);
         localStorage.setItem('analog_scale_brightness', currentBrightness);
         if (!rafId && scaleCanvas && isVisible) {
-            lastDrawnFreq = -999; // Force redraw to apply brightness
+            lastDrawnFreq = -999; 
             drawScale(scaleCanvas, animFreq);
         }
     });
@@ -371,7 +375,6 @@
     input.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
-  // ── Helper functions ──────────────────────────────────────
   function snapFreq(f) {
       const step = 0.1;
       let snappedOffset = Math.round((f - FM_MIN) / step) * step;
@@ -407,50 +410,69 @@
   }
 
   function applyKnobRotation(isOuter, deltaAngle) {
-      let f = currentFreq;
-      const step = 0.1;
+      let f = currentFreq !== null ? currentFreq : FM_MIN;
 
       if (isOuter) {
           outerKnobAngle += deltaAngle;
           accumulatedOuterAngle += deltaAngle;
-          const anglePerStep = Math.PI / 20; 
+          
+          const anglePerStep = Math.PI / 15; 
+          
           if (Math.abs(accumulatedOuterAngle) >= anglePerStep) {
               const steps = Math.trunc(accumulatedOuterAngle / anglePerStep);
               accumulatedOuterAngle -= steps * anglePerStep;
-              f = snapFreq(f);
-              f += steps * step;
+              
+              f = snapFreq(f); 
+              f += steps * 0.1;
+              f = parseFloat(f.toFixed(3));
+              f = Math.max(FM_MIN, Math.min(FM_MAX, f));
+              
+              if (dragFreq !== f) {
+                  dragFreq = f; 
+                  currentFreq = f; 
+                  
+                  const now = Date.now();
+                  if (now - lastTuneTime > TUNE_INTERVAL) { 
+                      tuneTo(f); 
+                      lastTuneTime = now; 
+                  }
+                  clearTimeout(finalTuneTimer);
+                  finalTuneTimer = setTimeout(() => { 
+                      tuneTo(f); 
+                      lastTuneTime = Date.now(); 
+                  }, 150);
+              }
           }
       } else {
           innerKnobAngle += deltaAngle;
           accumulatedInnerAngle += deltaAngle;
+          
           const anglePerInnerStep = Math.PI / 6; 
+          
           if (Math.abs(accumulatedInnerAngle) >= anglePerInnerStep) {
               const steps = Math.trunc(accumulatedInnerAngle / anglePerInnerStep);
               accumulatedInnerAngle -= steps * anglePerInnerStep;
-              if (!isFineTuningMode) {
-                  f = snapFreq(f);
-                  f += steps * step; 
-              } else {
-                  f += steps * (step / 10);
-                  f = parseFloat(f.toFixed(4));
+              
+              f += steps * 0.01;
+              f = parseFloat(f.toFixed(4));
+              f = Math.max(FM_MIN, Math.min(FM_MAX, f));
+              
+              if (dragFreq !== f) {
+                  dragFreq = f; 
+                  currentFreq = f; 
+                  
+                  const now = Date.now();
+                  if (now - lastTuneTime > TUNE_INTERVAL) { 
+                      tuneTo(f); 
+                      lastTuneTime = now; 
+                  }
+                  clearTimeout(finalTuneTimer);
+                  finalTuneTimer = setTimeout(() => { 
+                      tuneTo(f); 
+                      lastTuneTime = Date.now(); 
+                  }, 150);
               }
           }
-      }
-
-      f = Math.max(FM_MIN, Math.min(FM_MAX, f));
-      f = parseFloat(f.toFixed(3));
-      
-      if (dragFreq !== f) {
-          dragFreq = f; 
-          currentFreq = f; // New target for the needle
-          
-          const now = Date.now();
-          if (now - lastTuneTime > TUNE_INTERVAL) { tuneTo(f); lastTuneTime = now; }
-          clearTimeout(finalTuneTimer);
-          finalTuneTimer = setTimeout(() => {
-              const finalF = isFineTuningMode ? parseFloat(dragFreq.toFixed(3)) : snapFreq(dragFreq);
-              tuneTo(finalF);
-          }, 100);
       }
   }
 
@@ -465,7 +487,7 @@
     const distSq = dx * dx + dy * dy;
     
     knobDragMoved = false; 
-    outerVelocity = 0; // Stop wheel on grab
+    outerVelocity = 0; 
     innerVelocity = 0; 
     lastDragTime = Date.now(); 
 
@@ -504,9 +526,8 @@
             knobDragMoved = true;
         }
 
-        lastDragTime = Date.now(); // Track time for momentum calculation
+        lastDragTime = Date.now(); 
         
-        // Apply rotation and store velocity
         if (isDraggingOuterKnob) {
             outerVelocity = deltaAngle; 
             applyKnobRotation(true, deltaAngle);
@@ -534,7 +555,7 @@
         if (dragFreq !== f) {
             dragFreq = f; 
             currentFreq = f; 
-            animFreq = f; // Hard snap since we are dragging the scale directly
+            animFreq = f; 
             
             const now = Date.now();
             if (now - lastTuneTime > TUNE_INTERVAL) { tuneTo(f); lastTuneTime = now; }
@@ -554,12 +575,11 @@
         isFineTuningMode = !isFineTuningMode;
         if (navigator.vibrate) navigator.vibrate(50);
         if (knobCanvas) {
-            lastDrawnOuterAngle = -999; // Force redraw
+            lastDrawnOuterAngle = -999; 
             drawKnob(knobCanvas);
         }
     }
 
-    // If held still before releasing, kill momentum
     if (Date.now() - lastDragTime > 50) {
         outerVelocity = 0;
         innerVelocity = 0;
@@ -578,37 +598,67 @@
     }
   }
 
-  function startScaleDrag(evt) {
+function startScaleDrag(evt) {
     if (!scaleCanvas) return;
     const rect = scaleCanvas.getBoundingClientRect();
     const x = getClientX(evt) - rect.left;
     const y = getClientY(evt) - rect.top;
 
-    // --- CHECK: WAS REFRESH CLICKED? ---
+    if (typeof renderedStations !== 'undefined') {
+        for (let st of renderedStations) {
+            if (x >= st.left && x <= st.right && y >= st.top && y <= st.bottom) {
+                tuneTo(st.f);
+                if (currentFreq === null) animFreq = st.f;
+                currentFreq = st.f;
+                dragFreq = st.f;
+                return; 
+            }
+        }
+    }
+
     const sdrBtnClick = document.getElementById('spectrum-graph-button');
     const isSpecVisibleClick = sdrBtnClick && (sdrBtnClick.classList.contains('active') || sdrBtnClick.classList.contains('bg-color-4'));
 
-    const scanBtnLeft = mX + mW - 75; 
-    const scanBtnRight = mX + mW - 25;
-    const scanBtnTop = mY;
-    const scanBtnBottom = mY + 30;
+    // Dynamic hitbox calculation based on visual positioning
+    const paperX = mX + 2;
+    const paperW = mW - 4;
+    const paperH = mH - 4;
+    const baseY = (typeof isShowPsScaleEnabled !== 'undefined' && isShowPsScaleEnabled) ? (mY + 2 + paperH * 0.35) : (mY + 2 + paperH * 0.85);
+    const actionBtnY = baseY - ((typeof isShowPsScaleEnabled !== 'undefined' && isShowPsScaleEnabled) ? 5 : 15);
 
-    // Only allow clicking if the spectrum is actually visible
+    const scanBtnLeft = paperX + paperW - 35;
+    const scanBtnRight = paperX + paperW;
+    const scanBtnTop = actionBtnY - 15;
+    const scanBtnBottom = actionBtnY + 15;
+
+    const clearBtnLeft = paperX;
+    const clearBtnRight = paperX + 35;
+    const clearBtnTop = actionBtnY - 15;
+    const clearBtnBottom = actionBtnY + 15;
+
+    // SCAN BUTTON (Only if spectrum is visible)
     if (isSpecVisibleClick && x >= scanBtnLeft && x <= scanBtnRight && y >= scanBtnTop && y <= scanBtnBottom) {
         const origBtn = document.getElementById('spectrum-scan-button');
-        if (origBtn) origBtn.click(); // Trigger scan
+        if (origBtn) origBtn.click(); 
 
         window._retroScanClicked = Date.now();
-        
-        // TRICK: Force the scale to redraw every frame for the next 4 seconds 
         window._forceRedrawUntil = Date.now() + 4000;
-
         if (typeof animFreq !== 'undefined' && animFreq !== null) drawScale(scaleCanvas, animFreq);
-        return; // Prevents the scale from being grabbed!
+        return; 
     }
-    // ------------------------------------
 
-    // Normal grabbing function for the scale
+    // CLEAR BUTTON (Only if PS scale is enabled)
+    if ((typeof isShowPsScaleEnabled !== 'undefined' && isShowPsScaleEnabled) && x >= clearBtnLeft && x <= clearBtnRight && y >= clearBtnTop && y <= clearBtnBottom) {
+        if (confirm("Are you sure you want to clear all saved PS stations?")) {
+            localStorage.removeItem('retro_station_db');
+            window._retroClearClicked = Date.now();
+            window._forceRedrawUntil = Date.now() + 1000;
+            if (typeof lastDrawnFreq !== 'undefined') lastDrawnFreq = -999;
+            if (typeof animFreq !== 'undefined' && animFreq !== null) drawScale(scaleCanvas, animFreq);
+        }
+        return; 
+    }
+
     if (x >= mX && x <= mX + mW && y >= mY && y <= mY + mH) {
         isDraggingScale = true;
         scaleCanvas.style.cursor = "col-resize";
@@ -616,7 +666,229 @@
     }
   }
 
-  // ── Hide/restore other canvas elements ────────────────────
+  function ensureElements() {
+    const cc = document.querySelector(".canvas-container.hide-phone");
+    if (!cc) return false;
+    if (document.getElementById("analog-scale-wrap")) {
+      scaleWrap   = document.getElementById("analog-scale-wrap");
+      scaleCanvas = document.getElementById("analog-scale-canvas");
+      knobCanvas  = document.getElementById("analog-knob-canvas");
+      vuCanvas    = document.getElementById("analog-vu-canvas");
+      return true;
+    }
+
+    scaleWrap = document.createElement("div");
+    scaleWrap.id = "analog-scale-wrap";
+    Object.assign(scaleWrap.style, {
+      display         : "none",  
+      flexDirection   : "row",
+      width           : "100%",
+      height          : "160px",
+      position        : "relative",
+      zIndex          : "5",
+      transform       : "translate(10px, -20px)", 
+      marginBottom    : "-35px", 
+      overflow        : "hidden",
+      boxSizing       : "border-box",
+      userSelect      : "none",
+      webkitUserSelect: "none",
+    });
+
+    // 1. Scale Section
+    const scaleDiv = document.createElement("div");
+    scaleDiv.id = "analog-scale-container";
+    Object.assign(scaleDiv.style, {
+      flex: "0 0 59%",
+      position: "relative",
+      height: "100%"
+    });
+
+    scaleCanvas = document.createElement("canvas");
+    scaleCanvas.id = "analog-scale-canvas";
+    Object.assign(scaleCanvas.style, {
+      width      : "100%",
+      height     : "100%",
+      display    : "block",
+      cursor     : "default",
+      touchAction: "none",
+    });
+    scaleDiv.appendChild(scaleCanvas);
+    scaleWrap.appendChild(scaleDiv);
+
+    // 2. Knob Section
+    const knobDiv = document.createElement("div");
+    knobDiv.id = "analog-knob-container";
+    Object.assign(knobDiv.style, {
+      flex: "0 0 12%",
+      position: "relative",
+      height: "100%"
+    });
+
+    knobCanvas = document.createElement("canvas");
+    knobCanvas.id = "analog-knob-canvas";
+    Object.assign(knobCanvas.style, {
+      width      : "100%",
+      height     : "100%",
+      position   : "relative",
+      marginLeft : "-10px",
+      display    : "block",
+      cursor     : "default",
+      touchAction: "none",
+    });
+    knobDiv.appendChild(knobCanvas);
+    scaleWrap.appendChild(knobDiv);
+
+    // 3. VU Meter Section
+    const vuDiv = document.createElement("div");
+    vuDiv.id = "analog-vu-container";
+    Object.assign(vuDiv.style, {
+      flex: "0 0 30%",
+      position: "relative",
+      marginLeft: "0px",
+      height: "100%"
+    });
+
+    vuCanvas = document.createElement("canvas");
+    vuCanvas.id = "analog-vu-canvas";
+    Object.assign(vuCanvas.style, {
+      width      : "100%",
+      height     : "100%",
+      display    : "block",
+      position   : "relative",
+      marginLeft : "-10px",
+      cursor     : "default",
+      touchAction: "none",
+    });
+    vuDiv.appendChild(vuCanvas);
+    scaleWrap.appendChild(vuDiv);
+
+    cc.appendChild(scaleWrap);
+
+    // Apply layout preferences (hide VU if necessary)
+    applyScaleLayout();
+
+    // -- Event Listeners (Scale) --
+    scaleCanvas.addEventListener("mousemove", (evt) => {
+        if (isDraggingScale || isDraggingOuterKnob || isDraggingInnerKnob) return;
+        const rect = scaleCanvas.getBoundingClientRect();
+        const x = evt.clientX - rect.left;
+        const y = evt.clientY - rect.top;
+        
+        // 1. CHECK: HOVERING OVER STATION NAME?
+        let isOverStation = false;
+        if (typeof renderedStations !== 'undefined') {
+            for (let st of renderedStations) {
+                if (x >= st.left && x <= st.right && y >= st.top && y <= st.bottom) {
+                    isOverStation = true;
+                    break;
+                }
+            }
+        }
+        if (isOverStation) {
+            scaleCanvas.style.cursor = "pointer";
+            return;
+        }
+
+        // 2. CHECK: IS MOUSE OVER THE REFRESH AREA?
+        const sdrBtnHover = document.getElementById('spectrum-graph-button');
+        const isSpecVisibleHover = sdrBtnHover && (sdrBtnHover.classList.contains('active') || sdrBtnHover.classList.contains('bg-color-4'));
+
+        // --- UPDATED HITBOX LOGIC ---
+        let scanBtnLeft, scanBtnRight, scanBtnTop, scanBtnBottom;
+        if (typeof isShowPsScaleEnabled !== 'undefined' && isShowPsScaleEnabled) {
+            scanBtnRight = mX + mW; 
+            scanBtnLeft = scanBtnRight - 40;
+            scanBtnTop = mY + 8;
+            scanBtnBottom = mY + 38;
+        } else {
+            scanBtnRight = mX + mW - 25;
+            scanBtnLeft = scanBtnRight - 50;
+            scanBtnTop = mY;
+            scanBtnBottom = mY + 30;
+        }
+
+        if (isSpecVisibleHover && x >= scanBtnLeft && x <= scanBtnRight && y >= scanBtnTop && y <= scanBtnBottom) {
+            scaleCanvas.style.cursor = "pointer";
+            if (!window._retroScanHovered) {
+                window._retroScanHovered = true;
+                if (typeof animFreq !== 'undefined' && animFreq !== null) drawScale(scaleCanvas, animFreq);
+            }
+            return;
+        } else {
+            if (window._retroScanHovered) {
+                window._retroScanHovered = false;
+                if (typeof animFreq !== 'undefined' && animFreq !== null) drawScale(scaleCanvas, animFreq);
+            }
+        }
+
+        // 3. CHECK: IS MOUSE DIRECTLY OVER THE RED NEEDLE?
+        const paperX = mX + 2;
+        const paperW = mW - 4;
+        const tX = paperX + paperW * 0.04;
+        const tW = paperW * 0.92;
+        
+        // Calculate the current visual X position of the needle
+        const needleX = tX + ((animFreq - FM_MIN) / (FM_MAX - FM_MIN)) * tW;
+        
+        // Define a "grab zone" of 10 pixels to the left and right of the needle
+        const isOverNeedle = (x >= needleX - 10 && x <= needleX + 10 && y >= mY && y <= mY + mH);
+
+        if (isOverNeedle) {
+            scaleCanvas.style.cursor = "ew-resize";
+        } else {
+            scaleCanvas.style.cursor = "default";
+        }
+    });
+
+    scaleCanvas.addEventListener("mousedown",  startScaleDrag);
+    scaleCanvas.addEventListener("touchstart", startScaleDrag, { passive: false });
+
+    // -- Event Listeners (Knob) --
+    knobCanvas.addEventListener("mousemove", (evt) => {
+        if (isDraggingScale || isDraggingOuterKnob || isDraggingInnerKnob) return;
+        const rect = knobCanvas.getBoundingClientRect();
+        const x = evt.clientX - rect.left;
+        const y = evt.clientY - rect.top;
+        const distSq = (x - knobX) * (x - knobX) + (y - knobY) * (y - knobY);
+        
+        if (distSq <= knobOuterR * knobOuterR) {
+            knobCanvas.style.cursor = "grab";
+        } else {
+            knobCanvas.style.cursor = "default";
+        }
+    });
+    knobCanvas.addEventListener("mousedown",  startKnobDrag);
+    knobCanvas.addEventListener("touchstart", startKnobDrag, { passive: false });
+	
+    knobCanvas.addEventListener("dblclick", (evt) => {
+        const rect = knobCanvas.getBoundingClientRect();
+        const x = evt.clientX - rect.left;
+        const y = evt.clientY - rect.top;
+        const distSq = (x - knobX) * (x - knobX) + (y - knobY) * (y - knobY);
+        
+        if (distSq <= knobInnerR * knobInnerR) {
+            if (currentFreq !== null) {
+                let sFreq = snapFreq(currentFreq);
+                currentFreq = sFreq; animFreq = sFreq; dragFreq = sFreq;
+                tuneTo(sFreq);
+            }
+        }
+    });
+
+    // -- Global drag listeners --
+    window.addEventListener("mousemove",   handleGlobalMove);
+    window.addEventListener("mouseup",     stopDrag);
+    window.addEventListener("mouseleave",  stopDrag);
+    
+    window.addEventListener("touchmove",   handleGlobalMove, { passive: false });
+    window.addEventListener("touchend",    stopDrag);
+    window.addEventListener("touchcancel", stopDrag);
+
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
+    return true;
+  }
+
   function mmHide(el) {
     if (!el || el.dataset.asHid !== undefined) return;
     el.dataset.asHid = el.style.display ?? "";
@@ -861,298 +1133,490 @@
       ctx.restore(); 
   }
 
-function drawScale(canvas, freq) {
-    const dpr = window.devicePixelRatio || 1;
-    const ctx = canvas.getContext("2d");
-    const CW  = canvas.width  / dpr;
-    const CH  = canvas.height / dpr;
-    
-    if(CW === 0 || CH === 0) return;
-    
-    const T   = getTheme(); 
+  function drawScale(canvas, freq) {
+      const dpr = window.devicePixelRatio || 1;
+      const ctx = canvas.getContext("2d");
+      const CW  = canvas.width  / dpr;
+      const CH  = canvas.height / dpr;
+      
+      if(CW === 0 || CH === 0) return;
+      
+      const T   = getTheme(); 
 
-    let dRange = FM_MAX - FM_MIN;
-    let lblStep = 2, majStep = 2, midStep = 1, minStep = 0.1;
+      let dRange = FM_MAX - FM_MIN;
+      let lblStep = 2, majStep = 2, midStep = 1, minStep = 0.1;
 
-    // --- Dynamische Skalen-Anpassung für kleine Frequenzbänder ---
-    if (dRange <= 15) {
-        lblStep = 1;   // Jede 1 MHz beschriften (z.B. 66, 67, 68...)
-        majStep = 1;   // Großer Strich für jede 1 MHz
-        midStep = 0.5; // Mittlerer Strich für jede 0.5 MHz
-    }
-    // -------------------------------------------------------------
+      if (dRange <= 15) {
+          lblStep = 1;   
+          majStep = 1;   
+          midStep = 0.5; 
+      }
 
-    ctx.save();
-    ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, CW, CH);
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, CW, CH);
 
-    ctx.fillStyle = rgba(T.bg1, 1.0); 
-    ctx.fillRect(0, 0, CW, CH);
-    
-    const mR = 3;
+      ctx.fillStyle = rgba(T.bg1, 1.0); 
+      ctx.fillRect(0, 0, CW, CH);
+      
+      const mR = 3;
 
-    ctx.save();
-    ctx.shadowColor  = "rgba(0,0,0,0.85)";
-    ctx.shadowBlur   = 10;
-    ctx.shadowOffsetY = 4;
-    ctx.shadowOffsetX = 2;
-    rrect(ctx, mX, mY, mW, mH, mR);
-    ctx.fillStyle = rgba(T.bg1, 1.0); 
-    ctx.fill();
-    ctx.restore();
+      ctx.save();
+      ctx.shadowColor   = "rgba(0,0,0,0.85)";
+      ctx.shadowBlur    = 10;
+      ctx.shadowOffsetY = 4;
+      ctx.shadowOffsetX = 2;
+      rrect(ctx, mX, mY, mW, mH, mR);
+      ctx.fillStyle = rgba(T.bg1, 1.0); 
+      ctx.fill();
+      ctx.restore();
 
-    ctx.save(); 
-    ctx.filter = `brightness(${currentBrightness})`;
+      ctx.save(); 
+      ctx.filter = `brightness(${currentBrightness})`;
 
-    const paperX = mX + 2;
-    const paperY = mY + 2;
-    const paperW = mW - 4;
-    const paperH = mH - 4;
+      const paperX = mX + 2;
+      const paperY = mY + 2;
+      const paperW = mW - 4;
+      const paperH = mH - 4;
 
-    ctx.fillStyle = rgba(T.bg2, 0.5);
-    rrect(ctx, paperX, paperY, paperW, paperH, 2);
-    ctx.fill();
+      ctx.fillStyle = rgba(T.bg2, 0.5);
+      rrect(ctx, paperX, paperY, paperW, paperH, 2);
+      ctx.fill();
 
-    const paper = ctx.createRadialGradient(
-      paperX + paperW * 0.5,  paperY + paperH * 0.5, paperH * 0.1,
-      paperX + paperW * 0.5,  paperY + paperH * 0.5, paperW * 0.65
-    );
-    paper.addColorStop(0.00, rgba(T.accent, 0.80)); 
-    paper.addColorStop(0.40, rgba(T.accent, 0.50)); 
-    paper.addColorStop(1.00, rgba(T.accent, 0.10)); 
-    ctx.fillStyle = paper;
-    rrect(ctx, paperX, paperY, paperW, paperH, 2);
-    ctx.fill();
+      const paper = ctx.createRadialGradient(
+        paperX + paperW * 0.5,  paperY + paperH * 0.5, paperH * 0.1,
+        paperX + paperW * 0.5,  paperY + paperH * 0.5, paperW * 0.65
+      );
+      paper.addColorStop(0.00, rgba(T.accent, 0.80)); 
+      paper.addColorStop(0.40, rgba(T.accent, 0.50)); 
+      paper.addColorStop(1.00, rgba(T.accent, 0.10)); 
+      ctx.fillStyle = paper;
+      rrect(ctx, paperX, paperY, paperW, paperH, 2);
+      ctx.fill();
 
-    // --- START SPECTRUM OVERLAY ---
-    try {
-        const sdrCanvas = document.getElementById('sdr-graph');
-        const specBtn = document.getElementById('spectrum-graph-button');
-        
-        const isSpecActive = specBtn && (specBtn.classList.contains('active') || specBtn.classList.contains('bg-color-4'));
+      const tX    = paperX + paperW * 0.04;
+      const tW    = paperW * 0.92;
+      const baseY = isShowPsScaleEnabled ? paperY + paperH * 0.35 : paperY + paperH * 0.85;  
+      const numY  = isShowPsScaleEnabled ? paperY + paperH * 0.15 : paperY + paperH * 0.32;  
+      const fX    = f => tX + ((f - FM_MIN) / dRange) * tW;
 
-        if (sdrCanvas && isSpecActive && sdrCanvas.width > 100) {
-            
-            const scaleStartX = paperX + paperW * 0.04;
-            const scaleWidth = paperW * 0.92;
-            const scaleBaseY = paperY + paperH * 0.85;
+      // --- START SPECTRUM OVERLAY ---
+      try {
+          const sdrCanvas = document.getElementById('sdr-graph');
+          const specBtn = document.getElementById('spectrum-graph-button');
+          const isSpecActive = specBtn && (specBtn.classList.contains('active') || specBtn.classList.contains('bg-color-4'));
 
-            const signalText = localStorage.getItem('signalUnit') || 'dbf';
-            let sdrXOffset = (signalText === 'dbm') ? 36 : 30;
+          if (sdrCanvas && isSpecActive && sdrCanvas.width > 100) {
+              const signalText = localStorage.getItem('signalUnit') || 'dbf';
+              let sdrXOffset = (signalText === 'dbm') ? 36 : 30;
 
-            const srcX = sdrXOffset + 1;
-            const srcY = 16; 
-            const srcW = sdrCanvas.width - sdrXOffset - 2;
-            const srcH = sdrCanvas.height - 40; 
+              const srcX = sdrXOffset + 1;
+              const srcY = 16; 
+              const srcW = sdrCanvas.width - sdrXOffset - 2;
+              const srcH = sdrCanvas.height - 40; 
 
-            const destX = scaleStartX;
-            const destY = paperY + 2; 
-            const destW = scaleWidth;
-            const destH = (scaleBaseY - paperY) - 2;
+              const destX = tX;
+              const destY = paperY + 2; 
+              const destW = tW;
+              const destH = (baseY - paperY) - 2; 
 
-            if (srcW > 0 && srcH > 0) {
-                ctx.save();
-                
-                rrect(ctx, paperX, paperY, paperW, paperH, 2);
-                ctx.clip();
+              if (srcW > 0 && srcH > 0) {
+                  ctx.save();
+                  rrect(ctx, paperX, paperY, paperW, paperH, 2);
+                  ctx.clip();
 
-                // Apply shadow filter
-                ctx.filter = 'invert(1) grayscale(1) contrast(2.0) brightness(0.9)';
-                ctx.globalAlpha = 0.3; 
-                ctx.globalCompositeOperation = 'multiply';
+                  ctx.filter = 'invert(1) grayscale(1) contrast(2.0) brightness(0.9)';
+                  ctx.globalAlpha = 0.3; 
+                  ctx.globalCompositeOperation = 'multiply';
 
-                ctx.drawImage(sdrCanvas, srcX, srcY, srcW, srcH, destX, destY, destW, destH);
+                  ctx.drawImage(sdrCanvas, srcX, srcY, srcW, srcH, destX, destY, destW, destH);
+                  ctx.restore();
+              }
+          }
+      } catch (e) {}
 
-                ctx.restore();
-            }
-        }
-    } catch (e) {
-        console.warn("[RetroDesign] Error rendering spectrum background:", e);
-    }
-    // --- END SPECTRUM OVERLAY ---
+      const inkColor = "rgba(10, 15, 20, 0.95)";
+      const inkFaded = "rgba(10, 15, 20, 0.70)";
 
-    const tX    = paperX + paperW * 0.04;
-    const tW    = paperW * 0.92;
-    const baseY = paperY + paperH * 0.85;  
-    const numY  = paperY + paperH * 0.32;  
-    const fX    = f => tX + ((f - FM_MIN) / dRange) * tW;
+      ctx.beginPath();
+      ctx.moveTo(tX, baseY);
+      ctx.lineTo(tX + tW, baseY);
+      ctx.strokeStyle = inkFaded;
+      ctx.lineWidth   = 2.0;
+      ctx.stroke();
 
-    const inkColor = "rgba(10, 15, 20, 0.95)";
-    const inkFaded = "rgba(10, 15, 20, 0.70)";
+      let iStart = Math.floor(FM_MIN / minStep);
+      let iEnd = Math.ceil(FM_MAX / minStep);
+      
+      // Draw scale ticks
+      for (let i = iStart; i <= iEnd; i++) {
+          const f = i * minStep;
+          if (f < FM_MIN - 0.001 || f > FM_MAX + 0.001) continue;
+          
+          const x = fX(f);
+          const isMaj = Math.abs(Math.round(f / majStep) * majStep - f) < 0.001;
+          const isMid = !isMaj && Math.abs(Math.round(f / midStep) * midStep - f) < 0.001;
+          
+          let tH = paperH * (isShowPsScaleEnabled ? 0.03 : 0.06), col = "rgba(10,15,20,0.5)", lw = 1.0;
+          if (isShowPsScaleEnabled) {
+              if (isMaj) { tH = paperH * 0.10; col = inkColor; lw = 2.0; } 
+              else if (isMid) { tH = paperH * 0.06; col = inkColor; lw = 1.5; } 
+          } else {
+              if (isMaj) { tH = paperH * 0.35; col = inkColor; lw = 2.0; } 
+              else if (isMid) { tH = paperH * 0.22; col = inkColor; lw = 1.5; } 
+          }
+          
+          ctx.beginPath(); ctx.moveTo(x, baseY); ctx.lineTo(x, baseY - tH);
+          ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.stroke();
+      }
 
-    ctx.beginPath();
-    ctx.moveTo(tX, baseY);
-    ctx.lineTo(tX + tW, baseY);
-    ctx.strokeStyle = inkFaded;
-    ctx.lineWidth   = 2.0;
-    ctx.stroke();
+      // --- START: DRAW SAVED PS STATION NAMES ---
+      renderedStations = []; 
+      if (isShowPsScaleEnabled) {
+          const dbStr = localStorage.getItem('retro_station_db');
+          const stationDB = dbStr ? JSON.parse(dbStr) : {};
+          
+          let visibleStations = [];
+          for (let fStr in stationDB) {
+              let stFreq = parseFloat(fStr);
+              if (stFreq >= FM_MIN - 0.2 && stFreq <= FM_MAX + 0.2) {
+                  let dataObj = typeof stationDB[fStr] === 'string' ? { ps: stationDB[fStr], active: true } : stationDB[fStr];
+                  visibleStations.push({ 
+                      freq: stFreq, 
+                      name: dataObj.ps, 
+                      x: fX(stFreq),
+                      data: dataObj 
+                  });
+              }
+          }
+          
+          visibleStations.sort((a,b) => a.x - b.x);
 
-    let iStart = Math.floor(FM_MIN / minStep);
-    let iEnd = Math.ceil(FM_MAX / minStep);
-    
-    for (let i = iStart; i <= iEnd; i++) {
-        const f = i * minStep;
-        if (f < FM_MIN - 0.001 || f > FM_MAX + 0.001) continue;
-        
-        const x = fX(f);
-        const isMaj = Math.abs(Math.round(f / majStep) * majStep - f) < 0.001;
-        const isMid = !isMaj && Math.abs(Math.round(f / midStep) * midStep - f) < 0.001;
-        
-        let tH = paperH * 0.06, col = "rgba(10,15,20,0.5)", lw = 1.0;
-        if (isMaj) { tH = paperH * 0.35; col = inkColor; lw = 2.0; } 
-        else if (isMid) { tH = paperH * 0.22; col = inkColor; lw = 1.5; } 
-        
-        ctx.beginPath(); ctx.moveTo(x, baseY); ctx.lineTo(x, baseY - tH);
-        ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.stroke();
-    }
+          const startY = baseY + paperH * 0.02; 
+          const availableHeight = (paperY + paperH) - startY - (paperH * 0.02); 
+          const totalRows = 5;
+          const rowHeight = availableHeight / totalRows;
+          
+          const fontMultiplier = isVuEnabled ? 0.60 : 0.70;
+          const minFontSize = isVuEnabled ? 7 : 9;
+          const stFontSize = Math.max(minFontSize, rowHeight * fontMultiplier);
+          
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle"; 
 
-    const numSize = Math.max(12, Math.min(18, paperW / 55));
-    ctx.font         = `700 ${numSize}px "Arial Narrow", Arial, sans-serif`;
-    ctx.textAlign    = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle    = inkColor;
+          const widthPerMHz = (1.0 / dRange) * tW;
+          const maxTextWidth = widthPerMHz * 0.90; 
 
-    let startNum = Math.ceil(FM_MIN / lblStep) * lblStep;
-    for (let f = startNum; f <= FM_MAX + 0.001; f += lblStep) {
-        let text = lblStep < 1 ? f.toFixed(1) : Math.round(f).toString();
-        ctx.fillText(text, fX(f), numY);
-    }
+          let rowRightEdges = new Array(totalRows).fill(-9999);
+          const minHorizontalGap = isVuEnabled ? 6 : 8; 
 
-    const lblSize = Math.max(10, paperH * 0.20);
-    const topTextY = paperY + 5;
-    const smallLabelFont = `700 ${lblSize * 0.6}px Arial, sans-serif`;
+          ctx.font = `${stFontSize}px "Arial Narrow", Arial, sans-serif`;
+          const baselineString = isVuEnabled ? "000000" : "00000000";
+          const minBoxWidth = ctx.measureText(baselineString).width; 
 
-    ctx.textBaseline = "top"; ctx.textAlign = "left"; 
-    ctx.font = `900 ${lblSize}px "Arial Narrow", Arial, sans-serif`;
-    ctx.fillStyle = inkColor; 
-    ctx.fillText("FM", paperX + 8, topTextY);
-    
-    ctx.textAlign = "right"; 
-    ctx.font = smallLabelFont;
-    ctx.fillStyle = inkColor; 
-    ctx.fillText("MHz", paperX + paperW - 8, topTextY);
+          const minAllowedX = paperX + 4; 
+          const maxAllowedX = paperX + paperW - 4; 
 
-    // --- START: PRINTED SCAN BUTTON ---
-    const sdrBtnDraw = document.getElementById('spectrum-graph-button');
-    const isSpecVisible = sdrBtnDraw && (sdrBtnDraw.classList.contains('active') || sdrBtnDraw.classList.contains('bg-color-4'));
+          visibleStations.forEach((st, index) => {
+              const isHovered = (window._retroHoveredFreq === st.freq) || (Math.abs(freq - st.freq) <= 0.04);
+              const isActive = st.data && st.data.active !== false;
 
-    if (isSpecVisible) {
-        ctx.font = `700 ${lblSize * 0.65}px Arial, sans-serif`; // Slightly larger for the symbol
-        let scanColor = inkFaded;
-        
-        // Visual feedback: Red when clicked, darker ink when hovered
-        if (window._retroScanClicked && Date.now() - window._retroScanClicked < 150) {
-            scanColor = "#ff3300"; 
-        } else if (window._retroScanHovered) {
-            scanColor = inkColor; 
-        }
-        
-        ctx.fillStyle = scanColor; 
-        ctx.fillText("↻  ", paperX + paperW - 35, topTextY - 1); // Using Unicode Refresh Symbol
-    }
-    // --- END: PRINTED SCAN BUTTON ---
+              ctx.font = `${stFontSize}px "Arial Narrow", Arial, sans-serif`;
+              const baseTextMetrics = ctx.measureText(st.name);
+              const baseBoxWidth = Math.max(minBoxWidth, baseTextMetrics.width);
+              const basePadX = isVuEnabled ? 2 : 4; 
+              const baseTotalWidth = baseBoxWidth + (basePadX * 2);
+              
+              let targetX = st.x;
 
-    const nx = fX(Math.max(FM_MIN, Math.min(FM_MAX, freq)));
+              if (index === 0) {
+                  targetX = minAllowedX + (baseTotalWidth / 2);
+              } else {
+                  if (targetX - (baseTotalWidth / 2) < minAllowedX) {
+                      targetX = minAllowedX + (baseTotalWidth / 2);
+                  }
+              }
 
-    ctx.save();
-    ctx.shadowColor   = "rgba(0,0,0,0.60)";
-    ctx.shadowBlur    = 4;
-    ctx.shadowOffsetX = 2;
-    ctx.shadowOffsetY = 1;
-    
-    ctx.beginPath();
-    ctx.moveTo(nx, mY - 1);
-    ctx.lineTo(nx, mY + mH + 1);
-    ctx.strokeStyle = "#ff3300"; 
-    ctx.lineWidth   = 2.5;
-    ctx.stroke();
-    ctx.restore();
+              let assignedRow = -1;
+              let finalX = targetX;
 
-    ctx.beginPath();
-    ctx.moveTo(nx, mY);
-    ctx.lineTo(nx, mY + mH);
-    ctx.strokeStyle = "rgba(255,200,200,0.60)";
-    ctx.lineWidth   = 0.9;
-    ctx.stroke();
+              for (let r = 0; r < totalRows; r++) {
+                  let leftEdge = targetX - (baseTotalWidth / 2);
+                  if (leftEdge > rowRightEdges[r] + minHorizontalGap) {
+                      assignedRow = r;
+                      break;
+                  }
+              }
 
-    const blockH = CH * 0.09;
-    const blockW = 10;
+              if (assignedRow === -1) {
+                  let bestShift = 9999;
+                  for (let r = 0; r < totalRows; r++) {
+                      let requiredShift = (rowRightEdges[r] + minHorizontalGap) - (targetX - baseTotalWidth / 2);
+                      if (requiredShift < bestShift) {
+                          bestShift = requiredShift;
+                          assignedRow = r;
+                      }
+                  }
+                  finalX = targetX + bestShift;
+              }
 
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.70)";
-    ctx.shadowBlur  = 4;
-    ctx.shadowOffsetY = 2;
-    const topBlock = ctx.createLinearGradient(nx - blockW/2, 0, nx + blockW/2, 0);
-    topBlock.addColorStop(0,   "#c01500");
-    topBlock.addColorStop(0.4, "#ff3a1a");
-    topBlock.addColorStop(0.6, "#ff3a1a");
-    topBlock.addColorStop(1,   "#8a0d00");
-    ctx.fillStyle = topBlock;
-    ctx.fillRect(nx - blockW / 2, 0, blockW, blockH);
-    ctx.restore();
-    ctx.strokeStyle = "rgba(255,200,180,0.45)";
-    ctx.lineWidth   = 0.7;
-    ctx.strokeRect(nx - blockW / 2, 0, blockW, blockH);
+              if (finalX + (baseTotalWidth / 2) > maxAllowedX) {
+                  finalX = maxAllowedX - (baseTotalWidth / 2);
+              }
 
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.70)";
-    ctx.shadowBlur  = 4;
-    ctx.shadowOffsetY = -1;
-    const botBlock = ctx.createLinearGradient(nx - 4, 0, nx + 4, 0);
-    botBlock.addColorStop(0,   "#8a0d00");
-    botBlock.addColorStop(0.5, "#dd2a10");
-    botBlock.addColorStop(1,   "#8a0d00");
-    ctx.fillStyle = botBlock;
-    ctx.fillRect(nx - 4, CH - blockH * 0.85, 8, blockH * 0.85);
-    ctx.restore();
+              rowRightEdges[assignedRow] = Math.max(rowRightEdges[assignedRow], finalX + (baseTotalWidth / 2));
+              const y = startY + assignedRow * rowHeight + (rowHeight / 2);
 
-    ctx.restore(); 
+              const hoverFactor = 1.15; 
+              const currentFontSize = isHovered ? stFontSize * hoverFactor : stFontSize;
+              ctx.font = `${isHovered ? 'bold ' : ''}${currentFontSize}px "Arial Narrow", Arial, sans-serif`;
+              
+              const drawTextMetrics = ctx.measureText(st.name);
+              const drawBoxWidth = Math.max(minBoxWidth, drawTextMetrics.width);
+              const drawPadX = isHovered ? (isVuEnabled ? 4 : 6) : basePadX;
+              const th = currentFontSize * 1.05; 
+              const drawPadY = isHovered ? 1 : 0; 
 
-    ctx.save();
-    const bezelTop = ctx.createLinearGradient(0, mY, 0, mY + 6);
-    bezelTop.addColorStop(0,   "rgba(255,255,255,0.40)");
-    bezelTop.addColorStop(1,   "rgba(255,255,255,0.00)");
-    ctx.fillStyle = bezelTop;
-    ctx.fillRect(mX, mY, mW, 6);
+              let drawX = finalX;
+              const drawTotalWidth = drawBoxWidth + (drawPadX * 2);
+              if (drawX - (drawTotalWidth / 2) < paperX + 2) drawX = paperX + 2 + (drawTotalWidth / 2);
+              if (drawX + (drawTotalWidth / 2) > paperX + paperW - 2) drawX = paperX + paperW - 2 - (drawTotalWidth / 2);
 
-    const bezelBot = ctx.createLinearGradient(0, mY + mH - 6, 0, mY + mH);
-    bezelBot.addColorStop(0,   "rgba(0,0,0,0.00)");
-    bezelBot.addColorStop(1,   "rgba(0,0,0,0.60)");
-    ctx.fillStyle = bezelBot;
-    ctx.fillRect(mX, mY + mH - 6, mW, 6);
-    ctx.restore();
+              if (isActive) {
+                  ctx.fillStyle = rgba(T.bg1, 0.20); 
+                  if (isHovered) {
+                      ctx.shadowColor = "rgba(0,0,0,0.3)";
+                      ctx.shadowBlur = 4;
+                  }
+                  rrect(ctx, drawX - drawBoxWidth/2 - drawPadX, y - th/2 - drawPadY, drawBoxWidth + 2*drawPadX, th + 2*drawPadY, 4);
+                  ctx.fill();
+                  ctx.shadowBlur = 0; 
+                  ctx.fillStyle = inkColor; 
+              } else {
+                  if (isHovered) {
+                      ctx.shadowColor = "rgba(0,0,0,0.5)";
+                      ctx.shadowBlur = 4;
+                  }
+                  ctx.fillStyle = inkFaded;
+              }
+              
+              ctx.fillText(st.name, drawX, y, maxTextWidth * (isHovered ? hoverFactor : 1));
+              ctx.shadowBlur = 0;
 
-    ctx.save();
-    rrect(ctx, mX, mY, mW, mH, mR);
-    ctx.strokeStyle = "rgba(255,255,255,0.15)";
-    ctx.lineWidth   = 1;
-    ctx.stroke();
-    rrect(ctx, mX + 1, mY + 1, mW - 2, mH - 2, mR - 1);
-    ctx.strokeStyle = "rgba(0,0,0,0.50)";
-    ctx.lineWidth   = 1;
-    ctx.stroke();
-    ctx.restore();
+              renderedStations.push({
+                  f: st.freq,
+                  left: drawX - (drawBoxWidth / 2) - drawPadX,
+                  right: drawX + (drawBoxWidth / 2) + drawPadX,
+                  top: y - (stFontSize * 0.6),
+                  bottom: y + (stFontSize * 0.6),
+                  data: st.data 
+              });
+          });
+      }
 
-    ctx.save();
-    rrect(ctx, mX, mY, mW, mH, mR);
-    ctx.clip();
-    const glare = ctx.createLinearGradient(0, mY, 0, mY + mH * 0.22);
-    glare.addColorStop(0,   "rgba(255,255,255,0.08)");
-    glare.addColorStop(1,   "rgba(255,255,255,0.00)");
-    ctx.fillStyle = glare;
-    ctx.fillRect(mX, mY, mW, mH * 0.22);
-    
-    ctx.beginPath();
-    ctx.moveTo(mX + mW * 0.05, mY);
-    ctx.lineTo(mX + mW * 0.30, mY);
-    ctx.lineTo(mX + mW * 0.18, mY + mH * 0.55);
-    ctx.lineTo(mX + mW * 0.00, mY + mH * 0.55);
-    ctx.closePath();
-    ctx.fillStyle = "rgba(255,255,255,0.03)";
-    ctx.fill();
-    ctx.restore();
+      // Draw numbers
+      const numSize = Math.max(isShowPsScaleEnabled ? 10 : 12, Math.min(18, paperW / 55));
+      ctx.font         = `700 ${numSize}px "Arial Narrow", Arial, sans-serif`;
+      ctx.textAlign    = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle    = inkColor;
 
-    ctx.restore(); 
+      let startNum = Math.ceil(FM_MIN / lblStep) * lblStep;
+      for (let f = startNum; f <= FM_MAX + 0.001; f += lblStep) {
+          let text = lblStep < 1 ? f.toFixed(1) : Math.round(f).toString();
+          ctx.fillText(text, fX(f), numY);
+      }
+
+      const lblSize = Math.max(isShowPsScaleEnabled ? 9 : 10, paperH * (isShowPsScaleEnabled ? 0.14 : 0.20));
+      const topTextY = paperY + 5;
+      const bottomTextY = paperY + paperH - 4; 
+      const smallLabelFont = `700 ${lblSize * (isShowPsScaleEnabled ? 0.8 : 0.6)}px Arial, sans-serif`;
+
+      let firstNumX = fX(startNum); 
+      let lastNumX = fX(Math.floor(FM_MAX / lblStep) * lblStep);
+      let showMHz;
+
+      if (isShowPsScaleEnabled) {
+          showMHz = (firstNumX > paperX + 50);
+          
+          if (showMHz) {
+              ctx.textAlign = "left"; 
+              ctx.textBaseline = "middle"; 
+              ctx.font = smallLabelFont;
+              ctx.fillStyle = inkColor; 
+              ctx.fillText("MHz", paperX + 6, numY);
+          }
+
+          ctx.textBaseline = "bottom"; 
+          ctx.textAlign = "left"; 
+          ctx.font = `900 ${lblSize}px "Arial Narrow", Arial, sans-serif`;
+          ctx.fillStyle = inkColor; 
+          ctx.fillText("FM", paperX + 3, bottomTextY);
+      } else {
+          showMHz = (lastNumX < paperX + paperW - 45);
+          
+          ctx.textBaseline = "top"; 
+          ctx.textAlign = "left"; 
+          ctx.font = `900 ${lblSize}px "Arial Narrow", Arial, sans-serif`;
+          ctx.fillStyle = inkColor; 
+          ctx.fillText("FM", paperX + 8, topTextY);
+          
+          if (showMHz) {
+              ctx.textAlign = "right"; 
+              ctx.font = smallLabelFont;
+              ctx.fillStyle = inkColor; 
+              ctx.fillText("MHz", paperX + paperW - 8, topTextY);
+          }
+      }
+
+      // --- BUTTONS (SCAN & CLEAR) ---
+      const sdrBtnDraw = document.getElementById('spectrum-graph-button');
+      const isSpecVisible = sdrBtnDraw && (sdrBtnDraw.classList.contains('active') || sdrBtnDraw.classList.contains('bg-color-4'));
+      
+      const actionBtnY = baseY - (isShowPsScaleEnabled ? 5 : 15);
+      ctx.textBaseline = "middle"; 
+
+      // Refresh Button (Right side, ONLY if spectrum is visible)
+      if (isSpecVisible) {
+          ctx.font = `700 ${lblSize * 0.8}px Arial, sans-serif`; 
+          let scanColor = inkFaded;
+          if (window._retroScanClicked && Date.now() - window._retroScanClicked < 150) {
+              scanColor = "#ff3300"; 
+          } else if (window._retroScanHovered) {
+              scanColor = inkColor; 
+          }
+          ctx.fillStyle = scanColor; 
+          ctx.textAlign = "right"; 
+          
+          // Align exactly with the right margin (matches the 'MHz' label padding)
+          let scanX = paperX + paperW - 5; 
+          
+          // Removed the trailing space inside the string to make it perfectly flush right
+          ctx.fillText("↻", scanX, actionBtnY); 
+      }
+
+      // Clear Button (Left side, ONLY if PS Scale is enabled)
+      if (isShowPsScaleEnabled) {
+          ctx.font = `700 ${lblSize * 0.55}px Arial, sans-serif`; 
+          let clearColor = inkFaded;
+          if (window._retroClearClicked && Date.now() - window._retroClearClicked < 150) {
+              clearColor = "#ff3300"; 
+          } else if (window._retroClearHovered) {
+              clearColor = inkColor; 
+          }
+          ctx.fillStyle = clearColor; 
+          ctx.textAlign = "left"; 
+          let clearX = paperX + 5;
+          ctx.fillText(" ✖", clearX, actionBtnY);
+      }
+
+      // --- DRAW NEEDLE ---
+      const nx = fX(Math.max(FM_MIN, Math.min(FM_MAX, freq)));
+
+      ctx.save();
+      ctx.shadowColor   = "rgba(0,0,0,0.60)";
+      ctx.shadowBlur    = 4;
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 1;
+      
+      ctx.beginPath();
+      ctx.moveTo(nx, mY - 1);
+      ctx.lineTo(nx, mY + mH + 1);
+      ctx.strokeStyle = "#ff3300"; 
+      ctx.lineWidth   = 2.5;
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.beginPath();
+      ctx.moveTo(nx, mY);
+      ctx.lineTo(nx, mY + mH);
+      ctx.strokeStyle = "rgba(255,200,200,0.60)";
+      ctx.lineWidth   = 0.9;
+      ctx.stroke();
+
+      const blockH = CH * 0.09;
+      const blockW = 10;
+
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.70)";
+      ctx.shadowBlur  = 4;
+      ctx.shadowOffsetY = 2;
+      const topBlock = ctx.createLinearGradient(nx - blockW/2, 0, nx + blockW/2, 0);
+      topBlock.addColorStop(0,   "#c01500");
+      topBlock.addColorStop(0.4, "#ff3a1a");
+      topBlock.addColorStop(0.6, "#ff3a1a");
+      topBlock.addColorStop(1,   "#8a0d00");
+      ctx.fillStyle = topBlock;
+      ctx.fillRect(nx - blockW / 2, 0, blockW, blockH);
+      ctx.restore();
+      ctx.strokeStyle = "rgba(255,200,180,0.45)";
+      ctx.lineWidth   = 0.7;
+      ctx.strokeRect(nx - blockW / 2, 0, blockW, blockH);
+
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.70)";
+      ctx.shadowBlur  = 4;
+      ctx.shadowOffsetY = -1;
+      const botBlock = ctx.createLinearGradient(nx - 4, 0, nx + 4, 0);
+      botBlock.addColorStop(0,   "#8a0d00");
+      botBlock.addColorStop(0.5, "#dd2a10");
+      botBlock.addColorStop(1,   "#8a0d00");
+      ctx.fillStyle = botBlock;
+      ctx.fillRect(nx - 4, CH - blockH * 0.85, 8, blockH * 0.85);
+      ctx.restore();
+
+      ctx.restore(); 
+
+      ctx.save();
+      const bezelTop = ctx.createLinearGradient(0, mY, 0, mY + 6);
+      bezelTop.addColorStop(0,   "rgba(255,255,255,0.40)");
+      bezelTop.addColorStop(1,   "rgba(255,255,255,0.00)");
+      ctx.fillStyle = bezelTop;
+      ctx.fillRect(mX, mY, mW, 6);
+
+      const bezelBot = ctx.createLinearGradient(0, mY + mH - 6, 0, mY + mH);
+      bezelBot.addColorStop(0,   "rgba(0,0,0,0.00)");
+      bezelBot.addColorStop(1,   "rgba(0,0,0,0.60)");
+      ctx.fillStyle = bezelBot;
+      ctx.fillRect(mX, mY + mH - 6, mW, 6);
+      ctx.restore();
+
+      ctx.save();
+      rrect(ctx, mX, mY, mW, mH, mR);
+      ctx.strokeStyle = "rgba(255,255,255,0.15)";
+      ctx.lineWidth   = 1;
+      ctx.stroke();
+      rrect(ctx, mX + 1, mY + 1, mW - 2, mH - 2, mR - 1);
+      ctx.strokeStyle = "rgba(0,0,0,0.50)";
+      ctx.lineWidth   = 1;
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      rrect(ctx, mX, mY, mW, mH, mR);
+      ctx.clip();
+      const glare = ctx.createLinearGradient(0, mY, 0, mY + mH * 0.22);
+      glare.addColorStop(0,   "rgba(255,255,255,0.08)");
+      glare.addColorStop(1,   "rgba(255,255,255,0.00)");
+      ctx.fillStyle = glare;
+      ctx.fillRect(mX, mY, mW, mH * 0.22);
+      
+      ctx.beginPath();
+      ctx.moveTo(mX + mW * 0.05, mY);
+      ctx.lineTo(mX + mW * 0.30, mY);
+      ctx.lineTo(mX + mW * 0.18, mY + mH * 0.55);
+      ctx.lineTo(mX + mW * 0.00, mY + mH * 0.55);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(255,255,255,0.03)";
+      ctx.fill();
+      ctx.restore();
+
+      ctx.restore(); 
+      
+      // Instantly update tooltip if the mouse is stationary over a station while data loads
+      if (typeof window._updateRetroTooltip === 'function') {
+          window._updateRetroTooltip();
+      }
   }
 
   function drawKnob(canvas) {
@@ -1885,13 +2349,13 @@ function drawScale(canvas, freq) {
     const dpr = window.devicePixelRatio || 1;
     
     const sW = scaleCanvas.parentElement.clientWidth;
-    const sH = scaleCanvas.parentElement.clientHeight || 160;
+    const sH = scaleCanvas.parentElement.clientHeight || 220;
     
     const kW = knobCanvas.parentElement.clientWidth   || 96;
-    const kH = knobCanvas.parentElement.clientHeight  || 160;
+    const kH = knobCanvas.parentElement.clientHeight  || 220;
 
     const vW = vuCanvas.parentElement.clientWidth;
-    const vH = vuCanvas.parentElement.clientHeight    || 160;
+    const vH = vuCanvas.parentElement.clientHeight    || 220;
 
     if(sW === 0 || sH === 0) return;
 
@@ -1906,7 +2370,6 @@ function drawScale(canvas, freq) {
 
     updateMetrics(sW, sH, kW);
 
-    // FORCE ALL ELEMENTS TO REDRAW IMMEDIATELY UPON RESIZE
     lastDrawnFreq = -999;
     lastDrawnOuterAngle = -999;
     lastDrawnInnerAngle = -999;
@@ -1921,13 +2384,32 @@ function drawScale(canvas, freq) {
       if (!el) { setTimeout(hookFrequency, 500); return; }
 
       const applyFreq = (v) => {
-          // Ignore external updates if we are actively dragging or the wheel is still spinning
-          if (isDraggingScale || isDraggingOuterKnob || isDraggingInnerKnob || Math.abs(outerVelocity) > 0.001 || Math.abs(innerVelocity) > 0.001) return;
+          if (isDraggingScale || isDraggingInnerKnob || isDraggingOuterKnob || Math.abs(innerVelocity) > 0.001 || Math.abs(outerVelocity) > 0.001) return;
+          
+          // PREVENT RUBBER-BANDING:
+          // If we recently tuned (within the last 1.5 seconds) and the server sends an old frequency 
+          // that does NOT match our target frequency, we ignore it.
+          if (Date.now() - lastTuneTime < 1500) {
+              if (currentFreq !== null && Math.abs(v - currentFreq) > 0.005) {
+                  return; // Ignore intermediate echoes from the server
+              }
+          }
+          
           if (!isNaN(v) && v >= FM_MIN && v <= FM_MAX) {
               if (currentFreq === null) {
-                  animFreq = v; // Initial snap
+                  animFreq = v; 
+              } else if (currentFreq !== v) {
+                  let diff = v - currentFreq;
+                  
+                  // Rotate the active knob visually if the frequency change came from outside
+                  if (!isDraggingInnerKnob && Math.abs(innerVelocity) < 0.001 && isFineTuningMode) {
+                      innerKnobAngle += (diff / 0.1) * (Math.PI / 6);
+                  }
+                  if (!isDraggingOuterKnob && Math.abs(outerVelocity) < 0.001 && !isFineTuningMode) {
+                      outerKnobAngle += (diff / 0.1) * (Math.PI / 20);
+                  }
               }
-              currentFreq = v; // Target updates, needle follows in renderLoop
+              currentFreq = v; 
           }
       };
 
@@ -1950,6 +2432,193 @@ function drawScale(canvas, freq) {
               });
           });
       }
+  }
+
+// ── RDS PS DB Hook (WITH STRICT METADATA VALIDATION & FULL DELETE) ──────────────────────────
+  function hookPS() {
+      const psElement = document.getElementById("data-ps");
+      const freqElement = document.getElementById("data-frequency");
+      
+      if (!psElement || !freqElement) { 
+          setTimeout(hookPS, 1000); 
+          return; 
+      }
+
+      let deleteTimer = null;
+      let activeDeleteFreq = null;
+      
+      // Track session frequency and PS stability
+      let lastFreq = null;
+      let freqSettledTime = Date.now();
+      let lastPS = null;
+      let psSettledTime = Date.now();
+
+      const getExactFreq = () => {
+          let f = (typeof currentFreq !== 'undefined' && currentFreq !== null) ? currentFreq : parseFloat(freqElement.innerText);
+          return isNaN(f) ? null : f;
+      };
+
+      const getTxt = (id) => {
+          const el = document.getElementById(id);
+          return el ? (el.innerText || el.textContent).trim() : "";
+      };
+
+      const saveCurrentPS = () => {
+          const f = getExactFreq();
+          if (f === null) return;
+          
+          // Reset frequency cooldown timer when frequency changes
+          if (f !== lastFreq) {
+              lastFreq = f;
+              freqSettledTime = Date.now();
+          }
+          
+          const rawText = psElement.innerText || psElement.textContent || "";
+          const ps = rawText.replace(/\u00A0/g, ' ').trim(); 
+          
+          // Reset PS cooldown timer when PS text changes in the UI
+          if (ps !== lastPS) {
+              lastPS = ps;
+              psSettledTime = Date.now();
+          }
+
+          const freqStr = (Math.round(f * 10) / 10).toFixed(1); 
+          const currentF = parseFloat(freqStr);
+          
+          let db = JSON.parse(localStorage.getItem('retro_station_db') || '{}');
+
+          // Migration of old data formats
+          for (let key in db) {
+              if (typeof db[key] === 'string') {
+                  db[key] = { ps: db[key], lastSeen: Date.now(), active: true };
+              }
+          }
+
+          const isValidPS = ps.length >= 3 && ps !== freqStr && !ps.match(/^[.\-]+$/) && !ps.includes("MHz");
+          // Check if tuned EXACTLY to the 100kHz raster (e.g. 97.4 and not 97.45)
+          const isOnCenter = Math.abs(f - currentF) <= 0.015; 
+
+          if (isValidPS) {
+              if (deleteTimer) {
+                  clearTimeout(deleteTimer);
+                  deleteTimer = null;
+                  activeDeleteFreq = null;
+              }
+
+              let shouldSave = true;
+
+              // Anti-jitter duplicate check for adjacent frequencies
+              for (let key in db) {
+                  if (db[key].ps === ps && key !== freqStr) {
+                      let existingF = parseFloat(key);
+                      let diff = Math.abs(existingF - currentF);
+                      if (diff > 0 && diff <= 0.2) {
+                          shouldSave = false;
+                          break;
+                      }
+                  }
+              }
+
+              if (shouldSave) {
+                  let entry = db[freqStr] || { ps: ps };
+                  let isUpdated = false;
+
+                  // STRICT VALIDATION: If PS changes, wipe all old metadata
+                  if (entry.ps !== ps) { 
+                      entry.ps = ps; 
+                      isUpdated = true; 
+                      
+                      delete entry.name;
+                      delete entry.city;
+                      delete entry.itu;
+                      delete entry.erp;
+                      delete entry.pol;
+                      delete entry.dist;
+                      delete entry.azi;
+                  }
+                  
+                  if (entry.active !== true) { entry.active = true; isUpdated = true; }
+                  
+                  // IMPORTANT: Wait only 400ms before grabbing metadata for blazing fast updates.
+                  // We check the UI tracking variables, NOT the database object!
+                  if (Date.now() - freqSettledTime > 400 && Date.now() - psSettledTime > 400) {
+                      const domFreq = parseFloat(getTxt("data-frequency"));
+                      if (Math.abs(domFreq - currentF) < 0.02) {
+                          const sName = getTxt("data-station-name");
+                          if (sName && entry.name !== sName) { entry.name = sName; isUpdated = true; }
+                          
+                          const sCity = getTxt("data-station-city");
+                          if (sCity && entry.city !== sCity) { entry.city = sCity; isUpdated = true; }
+                          
+                          const sItu = getTxt("data-station-itu");
+                          if (sItu && entry.itu !== sItu) { entry.itu = sItu; isUpdated = true; }
+                          
+                          const sErp = getTxt("data-station-erp");
+                          if (sErp && entry.erp !== sErp) { entry.erp = sErp; isUpdated = true; }
+                          
+                          const sPol = getTxt("data-station-pol");
+                          if (sPol && entry.pol !== sPol) { entry.pol = sPol; isUpdated = true; }
+                          
+                          const sDist = getTxt("data-station-distance");
+                          if (sDist && entry.dist !== sDist) { entry.dist = sDist; isUpdated = true; }
+                          
+                          const sAzi = getTxt("data-station-azimuth");
+                          if (sAzi && entry.azi !== sAzi) { entry.azi = sAzi; isUpdated = true; }
+                      }
+                  }
+
+                  if (isUpdated || !db[freqStr]) {
+                      entry.lastSeen = Date.now();
+                      db[freqStr] = entry;
+                      localStorage.setItem('retro_station_db', JSON.stringify(db));
+                      
+                      if (!db[freqStr] || entry.ps !== db[freqStr].ps || isUpdated) {
+                          if (typeof lastDrawnFreq !== 'undefined') lastDrawnFreq = -999;
+                          if (window.scaleCanvas) drawScale(window.scaleCanvas, f);
+                      }
+                  }
+              }
+          } 
+          else {
+              // --- FULL DELETE AFTER 3 SECONDS INACTIVE ---
+              if (isOnCenter && db[freqStr]) {
+                  if (activeDeleteFreq !== freqStr) {
+                      clearTimeout(deleteTimer);
+                      activeDeleteFreq = freqStr;
+                      deleteTimer = setTimeout(() => {
+                          let currentDb = JSON.parse(localStorage.getItem('retro_station_db') || '{}');
+                          if (currentDb[freqStr]) {
+                              delete currentDb[freqStr];
+                              localStorage.setItem('retro_station_db', JSON.stringify(currentDb));
+                              
+                              if (typeof lastDrawnFreq !== 'undefined') lastDrawnFreq = -999; 
+                              if (window.scaleCanvas) drawScale(window.scaleCanvas, getExactFreq() || f);
+                          }
+                          activeDeleteFreq = null;
+                      }, 3000); 
+                  }
+              } else if (!isOnCenter && deleteTimer) {
+                  clearTimeout(deleteTimer);
+                  deleteTimer = null;
+                  activeDeleteFreq = null;
+              }
+          }
+      };
+
+      const psObserver = new MutationObserver(() => setTimeout(saveCurrentPS, 300));
+      psObserver.observe(psElement, { childList: true, subtree: true, characterData: true });
+
+      const freqObserver = new MutationObserver(saveCurrentPS);
+      freqObserver.observe(freqElement, { childList: true, subtree: true, characterData: true });
+      
+      const nameElement = document.getElementById("data-station-name");
+      if (nameElement) {
+          const metaObserver = new MutationObserver(() => setTimeout(saveCurrentPS, 500));
+          metaObserver.observe(nameElement, { childList: true, subtree: true, characterData: true });
+      }
+
+      setInterval(saveCurrentPS, 800);
+      saveCurrentPS();
   }
 
   // ── DOM elements ──────────────────────────────────────────
@@ -1981,119 +2650,104 @@ function drawScale(canvas, freq) {
       webkitUserSelect: "none",
     });
 
-    // 1. Scale Section
     const scaleDiv = document.createElement("div");
     scaleDiv.id = "analog-scale-container";
-    Object.assign(scaleDiv.style, {
-      flex: "0 0 59%",
-      position: "relative",
-      height: "100%"
-    });
+    Object.assign(scaleDiv.style, { flex: "0 0 59%", position: "relative", height: "100%" });
 
     scaleCanvas = document.createElement("canvas");
     scaleCanvas.id = "analog-scale-canvas";
-    Object.assign(scaleCanvas.style, {
-      width      : "100%",
-      height     : "100%",
-      display    : "block",
-      cursor     : "default",
-      touchAction: "none",
-    });
+    Object.assign(scaleCanvas.style, { width: "100%", height: "100%", display: "block", cursor: "default", touchAction: "none" });
     scaleDiv.appendChild(scaleCanvas);
     scaleWrap.appendChild(scaleDiv);
 
-    // 2. Knob Section
     const knobDiv = document.createElement("div");
     knobDiv.id = "analog-knob-container";
-    Object.assign(knobDiv.style, {
-      flex: "0 0 12%",
-      position: "relative",
-      height: "100%"
-    });
+    Object.assign(knobDiv.style, { flex: "0 0 12%", position: "relative", height: "100%" });
 
     knobCanvas = document.createElement("canvas");
     knobCanvas.id = "analog-knob-canvas";
-    Object.assign(knobCanvas.style, {
-      width      : "100%",
-      height     : "100%",
-      position   : "relative",
-      marginLeft : "-10px",
-      display    : "block",
-      cursor     : "default",
-      touchAction: "none",
-    });
+    Object.assign(knobCanvas.style, { width: "100%", height: "100%", position: "relative", marginLeft : "-10px", display: "block", cursor: "default", touchAction: "none" });
     knobDiv.appendChild(knobCanvas);
     scaleWrap.appendChild(knobDiv);
 
-    // 3. VU Meter Section
     const vuDiv = document.createElement("div");
     vuDiv.id = "analog-vu-container";
-    Object.assign(vuDiv.style, {
-      flex: "0 0 30%",
-      position: "relative",
-      marginLeft: "0px",
-      height: "100%"
-    });
+    Object.assign(vuDiv.style, { flex: "0 0 30%", position: "relative", marginLeft: "0px", height: "100%" });
 
     vuCanvas = document.createElement("canvas");
     vuCanvas.id = "analog-vu-canvas";
-    Object.assign(vuCanvas.style, {
-      width      : "100%",
-      height     : "100%",
-      display    : "block",
-      position   : "relative",
-      marginLeft : "-10px",
-      cursor     : "default",
-      touchAction: "none",
-    });
+    Object.assign(vuCanvas.style, { width: "100%", height: "100%", display: "block", position: "relative", marginLeft : "-10px", cursor: "default", touchAction: "none" });
     vuDiv.appendChild(vuCanvas);
     scaleWrap.appendChild(vuDiv);
 
     cc.appendChild(scaleWrap);
 
-    // Apply layout preferences (hide VU if necessary)
     applyScaleLayout();
 
-    // -- Event Listeners (Scale) --
     scaleCanvas.addEventListener("mousemove", (evt) => {
         if (isDraggingScale || isDraggingOuterKnob || isDraggingInnerKnob) return;
         const rect = scaleCanvas.getBoundingClientRect();
         const x = evt.clientX - rect.left;
         const y = evt.clientY - rect.top;
         
-        // 1. CHECK: IS MOUSE OVER THE REFRESH AREA?
+        let isOverStation = false;
+        if (typeof renderedStations !== 'undefined') {
+            for (let st of renderedStations) {
+                if (x >= st.left && x <= st.right && y >= st.top && y <= st.bottom) {
+                    isOverStation = true;
+                    break;
+                }
+            }
+        }
+        if (isOverStation) {
+            scaleCanvas.style.cursor = "pointer";
+            return;
+        }
+
         const sdrBtnHover = document.getElementById('spectrum-graph-button');
         const isSpecVisibleHover = sdrBtnHover && (sdrBtnHover.classList.contains('active') || sdrBtnHover.classList.contains('bg-color-4'));
 
-        const scanBtnLeft = mX + mW - 75;
-        const scanBtnRight = mX + mW - 25;
-        const scanBtnTop = mY;
-        const scanBtnBottom = mY + 30;
+        // Dynamic hitbox calculation for hover
+        const paperX = mX + 2;
+        const paperH = mH - 4;
+        const paperW = mW - 4;
+        const baseY = (typeof isShowPsScaleEnabled !== 'undefined' && isShowPsScaleEnabled) ? (mY + 2 + paperH * 0.35) : (mY + 2 + paperH * 0.85);
+        const actionBtnY = baseY - ((typeof isShowPsScaleEnabled !== 'undefined' && isShowPsScaleEnabled) ? 5 : 15);
 
-        if (isSpecVisibleHover && x >= scanBtnLeft && x <= scanBtnRight && y >= scanBtnTop && y <= scanBtnBottom) {
+        const scanBtnLeft = paperX + paperW - 35;
+        const scanBtnRight = paperX + paperW;
+        const scanBtnTop = actionBtnY - 15;
+        const scanBtnBottom = actionBtnY + 15;
+
+        const clearBtnLeft = paperX;
+        const clearBtnRight = paperX + 35;
+        const clearBtnTop = actionBtnY - 15;
+        const clearBtnBottom = actionBtnY + 15;
+
+        let hoveringScan = isSpecVisibleHover && x >= scanBtnLeft && x <= scanBtnRight && y >= scanBtnTop && y <= scanBtnBottom;
+        let hoveringClear = (typeof isShowPsScaleEnabled !== 'undefined' && isShowPsScaleEnabled) && x >= clearBtnLeft && x <= clearBtnRight && y >= clearBtnTop && y <= clearBtnBottom;
+
+        if (hoveringScan || hoveringClear) {
             scaleCanvas.style.cursor = "pointer";
-            if (!window._retroScanHovered) {
-                window._retroScanHovered = true;
+            
+            if (hoveringScan !== window._retroScanHovered || hoveringClear !== window._retroClearHovered) {
+                window._retroScanHovered = hoveringScan;
+                window._retroClearHovered = hoveringClear;
                 if (typeof animFreq !== 'undefined' && animFreq !== null) drawScale(scaleCanvas, animFreq);
             }
             return;
         } else {
-            if (window._retroScanHovered) {
+            if (window._retroScanHovered || window._retroClearHovered) {
                 window._retroScanHovered = false;
+                window._retroClearHovered = false;
                 if (typeof animFreq !== 'undefined' && animFreq !== null) drawScale(scaleCanvas, animFreq);
             }
         }
 
-        // 2. CHECK: IS MOUSE DIRECTLY OVER THE RED NEEDLE?
-        const paperX = mX + 2;
-        const paperW = mW - 4;
         const tX = paperX + paperW * 0.04;
         const tW = paperW * 0.92;
-        
-        // Calculate the current visual X position of the needle
         const needleX = tX + ((animFreq - FM_MIN) / (FM_MAX - FM_MIN)) * tW;
         
-        // Define a "grab zone" of 10 pixels to the left and right of the needle
         const isOverNeedle = (x >= needleX - 10 && x <= needleX + 10 && y >= mY && y <= mY + mH);
 
         if (isOverNeedle) {
@@ -2106,7 +2760,6 @@ function drawScale(canvas, freq) {
     scaleCanvas.addEventListener("mousedown",  startScaleDrag);
     scaleCanvas.addEventListener("touchstart", startScaleDrag, { passive: false });
 
-    // -- Event Listeners (Knob) --
     knobCanvas.addEventListener("mousemove", (evt) => {
         if (isDraggingScale || isDraggingOuterKnob || isDraggingInnerKnob) return;
         const rect = knobCanvas.getBoundingClientRect();
@@ -2138,11 +2791,9 @@ function drawScale(canvas, freq) {
         }
     });
 
-    // -- Global drag listeners --
     window.addEventListener("mousemove",   handleGlobalMove);
     window.addEventListener("mouseup",     stopDrag);
     window.addEventListener("mouseleave",  stopDrag);
-    
     window.addEventListener("touchmove",   handleGlobalMove, { passive: false });
     window.addEventListener("touchend",    stopDrag);
     window.addEventListener("touchcancel", stopDrag);
@@ -2216,6 +2867,238 @@ function drawScale(canvas, freq) {
       if (btn) btn.classList.add("active");
     }
   }
+  
+  // ── Keyboard Hooks (Arrow Keys) ──────────────────────────
+  function setupKeyboardHooks() {
+      window.addEventListener("keydown", (evt) => {
+          if (document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA")) return;
+
+          // ARROW LEFT/RIGHT -> OUTER RING (Coarse tuning 0.1 MHz)
+          if (evt.key === "ArrowLeft" || evt.key === "ArrowRight") {
+              evt.preventDefault();
+              evt.stopPropagation(); // Verhindert, dass das originale Webinterface dazwischenfunkt
+              isFineTuningMode = false; 
+              
+              const dir = (evt.key === "ArrowRight") ? 1 : -1;
+              outerKnobAngle += (Math.PI / 15) * dir; 
+              
+              let f = currentFreq !== null ? currentFreq : FM_MIN;
+              f = snapFreq(f); 
+              f += 0.1 * dir;
+              f = parseFloat(f.toFixed(3));
+              f = Math.max(FM_MIN, Math.min(FM_MAX, f));
+              
+              if (dragFreq !== f) {
+                  dragFreq = f; 
+                  currentFreq = f; 
+                  window._retroTargetFreq = f; // Ziel-Frequenz für den Sync setzen
+                  
+                  const now = Date.now();
+                  if (now - lastTuneTime > TUNE_INTERVAL) { 
+                      tuneTo(f); 
+                      lastTuneTime = now; 
+                  }
+                  clearTimeout(finalTuneTimer);
+                  finalTuneTimer = setTimeout(() => { 
+                      tuneTo(f); 
+                      lastTuneTime = Date.now(); 
+                  }, 150);
+              }
+              lastDrawnOuterAngle = -999; 
+          }
+          
+          // ARROW UP/DOWN -> INNER RING (Fine tuning 0.01 MHz)
+          else if (evt.key === "ArrowUp" || evt.key === "ArrowDown") {
+              evt.preventDefault();
+              evt.stopPropagation();
+              isFineTuningMode = true; 
+              
+              const dir = (evt.key === "ArrowUp") ? 1 : -1;
+              innerKnobAngle += (Math.PI / 6) * dir; 
+              
+              let f = currentFreq !== null ? currentFreq : FM_MIN;
+              f += 0.01 * dir;
+              f = parseFloat(f.toFixed(4));
+              f = Math.max(FM_MIN, Math.min(FM_MAX, f));
+              
+              if (dragFreq !== f) {
+                  dragFreq = f; 
+                  currentFreq = f; 
+                  window._retroTargetFreq = f; // Ziel-Frequenz für den Sync setzen
+                  
+                  const now = Date.now();
+                  if (now - lastTuneTime > TUNE_INTERVAL) { 
+                      tuneTo(f); 
+                      lastTuneTime = now; 
+                  }
+                  clearTimeout(finalTuneTimer);
+                  finalTuneTimer = setTimeout(() => { 
+                      tuneTo(f); 
+                      lastTuneTime = Date.now(); 
+                  }, 150);
+              }
+              lastDrawnInnerAngle = -999; 
+          }
+      });
+  }
+
+  function tuneTo(freq) {
+      freq = Math.round(freq * 100) / 100;
+      const input = document.getElementById("commandinput");
+      if (!input) return;
+      input.value = freq.toFixed(2);
+      
+      // CRITICAL FIX: Only dispatch the Enter key! 
+      // Removed the duplicate "change" event that caused the server to double-fire every single tune command.
+      input.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true }));
+  }
+
+  // ── Keyboard Hooks (Arrow Keys) ──────────────────────────
+  function setupKeyboardHooks() {
+      // CRITICAL FIX: Added 'true' at the end to use the Capture Phase.
+      // This intercepts the keypress BEFORE the native FM-DX webserver script can see it!
+      window.addEventListener("keydown", (evt) => {
+          if (document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA")) return;
+
+          // ARROW LEFT/RIGHT -> OUTER RING (Coarse tuning 0.1 MHz)
+          if (evt.key === "ArrowLeft" || evt.key === "ArrowRight") {
+              evt.preventDefault();
+              evt.stopImmediatePropagation(); // Kills the native webserver's hidden keyboard shortcuts
+              evt.stopPropagation();
+              isFineTuningMode = false; 
+              
+              const dir = (evt.key === "ArrowRight") ? 1 : -1;
+              outerKnobAngle += (Math.PI / 15) * dir; 
+              
+              let f = currentFreq !== null ? currentFreq : FM_MIN;
+              f = snapFreq(f); 
+              f += 0.1 * dir;
+              f = parseFloat(f.toFixed(3));
+              f = Math.max(FM_MIN, Math.min(FM_MAX, f));
+              
+              if (dragFreq !== f) {
+                  dragFreq = f; 
+                  currentFreq = f; 
+                  window._retroTargetFreq = f; 
+                  
+                  const now = Date.now();
+                  if (now - lastTuneTime > 200) { 
+                      tuneTo(f); 
+                      lastTuneTime = now; 
+                  }
+                  clearTimeout(finalTuneTimer);
+                  finalTuneTimer = setTimeout(() => { 
+                      tuneTo(f); 
+                      lastTuneTime = Date.now(); 
+                  }, 250);
+              }
+              lastDrawnOuterAngle = -999; 
+          }
+          
+          // ARROW UP/DOWN -> INNER RING (Fine tuning 0.01 MHz)
+          else if (evt.key === "ArrowUp" || evt.key === "ArrowDown") {
+              evt.preventDefault();
+              evt.stopImmediatePropagation(); // Kills native webserver shortcuts
+              evt.stopPropagation();
+              isFineTuningMode = true; 
+              
+              const dir = (evt.key === "ArrowUp") ? 1 : -1;
+              innerKnobAngle += (Math.PI / 6) * dir; 
+              
+              let f = currentFreq !== null ? currentFreq : FM_MIN;
+              f += 0.01 * dir;
+              f = parseFloat(f.toFixed(4));
+              f = Math.max(FM_MIN, Math.min(FM_MAX, f));
+              
+              if (dragFreq !== f) {
+                  dragFreq = f; 
+                  currentFreq = f; 
+                  window._retroTargetFreq = f; 
+                  
+                  const now = Date.now();
+                  if (now - lastTuneTime > 200) { 
+                      tuneTo(f); 
+                      lastTuneTime = now; 
+                  }
+                  clearTimeout(finalTuneTimer);
+                  finalTuneTimer = setTimeout(() => { 
+                      tuneTo(f); 
+                      lastTuneTime = Date.now(); 
+                  }, 250);
+              }
+              lastDrawnInnerAngle = -999; 
+          }
+      }, true); // <-- CAPTURE PHASE FLAG
+  }
+
+  function applyKnobRotation(isOuter, deltaAngle) {
+      let f = currentFreq !== null ? currentFreq : FM_MIN;
+
+      if (isOuter) {
+          outerKnobAngle += deltaAngle;
+          accumulatedOuterAngle += deltaAngle;
+          const anglePerStep = Math.PI / 15; 
+          
+          if (Math.abs(accumulatedOuterAngle) >= anglePerStep) {
+              const steps = Math.trunc(accumulatedOuterAngle / anglePerStep);
+              accumulatedOuterAngle -= steps * anglePerStep;
+              
+              f = snapFreq(f); 
+              f += steps * 0.1;
+              f = parseFloat(f.toFixed(3));
+              f = Math.max(FM_MIN, Math.min(FM_MAX, f));
+              
+              if (dragFreq !== f) {
+                  dragFreq = f; 
+                  currentFreq = f; 
+                  window._retroTargetFreq = f; 
+                  
+                  // CRITICAL FIX: Increased interval to 250ms.
+                  // Prevents the "flywheel" physics engine from DDOS-ing the webserver during fast spins.
+                  const now = Date.now();
+                  if (now - lastTuneTime > 250) { 
+                      tuneTo(f); 
+                      lastTuneTime = now; 
+                  }
+                  clearTimeout(finalTuneTimer);
+                  finalTuneTimer = setTimeout(() => { 
+                      tuneTo(f); 
+                      lastTuneTime = Date.now(); 
+                  }, 300); // Guarantees the final frequency lands cleanly
+              }
+          }
+      } else {
+          innerKnobAngle += deltaAngle;
+          accumulatedInnerAngle += deltaAngle;
+          const anglePerInnerStep = Math.PI / 6; 
+          
+          if (Math.abs(accumulatedInnerAngle) >= anglePerInnerStep) {
+              const steps = Math.trunc(accumulatedInnerAngle / anglePerInnerStep);
+              accumulatedInnerAngle -= steps * anglePerInnerStep;
+              
+              f += steps * 0.01;
+              f = parseFloat(f.toFixed(4));
+              f = Math.max(FM_MIN, Math.min(FM_MAX, f));
+              
+              if (dragFreq !== f) {
+                  dragFreq = f; 
+                  currentFreq = f; 
+                  window._retroTargetFreq = f; 
+                  
+                  const now = Date.now();
+                  if (now - lastTuneTime > 250) { 
+                      tuneTo(f); 
+                      lastTuneTime = now; 
+                  }
+                  clearTimeout(finalTuneTimer);
+                  finalTuneTimer = setTimeout(() => { 
+                      tuneTo(f); 
+                      lastTuneTime = Date.now(); 
+                  }, 300);
+              }
+          }
+      }
+  }
 
   // ── Plugin button ─────────────────────────────────────────
   function addButton() {
@@ -2263,8 +3146,137 @@ function drawScale(canvas, freq) {
     const t = document.querySelector(".dashboard-panel-plugin-list .flex-container.scrollable-container") || document.getElementById("button-wrapper");
     if (t) t.appendChild(btn);
   }
+  
+  // ── TOOLTIP LOGIC ────────────────────────────────────────────────────────
+  function setupRetroTooltip() {
+      const canvas = document.getElementById('analog-scale-canvas'); 
+      if (!canvas) {
+          setTimeout(setupRetroTooltip, 1000);
+          return;
+      }
 
-// ── Start ─────────────────────────────────────────────────
+      let tooltip = document.getElementById('retro-station-tooltip');
+      if (!tooltip) {
+          tooltip = document.createElement('div');
+          tooltip.id = 'retro-station-tooltip';
+          tooltip.style.cssText = `
+              position: fixed;
+              background: rgba(15, 25, 30, 0.95);
+              color: #eee;
+              padding: 10px 14px;
+              border-radius: 6px;
+              border: 1px solid rgba(80, 160, 180, 0.3);
+              font-family: Arial, sans-serif;
+              font-size: 13px;
+              z-index: 99999;
+              pointer-events: none;
+              display: none;
+              box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+              backdrop-filter: blur(4px);
+              min-width: 150px;
+          `;
+          document.body.appendChild(tooltip);
+      }
+
+      // Global variables to remember the exact mouse position when stationary
+      window._retroLastMouseX = -999;
+      window._retroLastMouseY = -999;
+      window._retroLastClientX = -999;
+      window._retroLastClientY = -999;
+
+      // Make the update function globally accessible so drawScale can trigger it
+      window._updateRetroTooltip = function() {
+          if (window._retroLastMouseX === -999) return;
+
+          let hoveredStation = null;
+          if (typeof renderedStations !== 'undefined' && renderedStations.length) {
+              for (let st of renderedStations) {
+                  if (window._retroLastMouseX >= st.left && window._retroLastMouseX <= st.right && 
+                      window._retroLastMouseY >= st.top && window._retroLastMouseY <= st.bottom) {
+                      hoveredStation = st;
+                      break;
+                  }
+              }
+          }
+
+          if (hoveredStation) {
+              if (window._retroHoveredFreq !== hoveredStation.f) {
+                  window._retroHoveredFreq = hoveredStation.f;
+                  if (typeof lastDrawnFreq !== 'undefined') lastDrawnFreq = -999; 
+              }
+          } else {
+              if (window._retroHoveredFreq !== null) {
+                  window._retroHoveredFreq = null;
+                  if (typeof lastDrawnFreq !== 'undefined') lastDrawnFreq = -999; 
+              }
+          }
+
+          // --- TOOLTIP DISPLAY LOGIC ---
+          if (hoveredStation && hoveredStation.data) {
+              const d = hoveredStation.data;
+              const dateStr = d.lastSeen ? new Date(d.lastSeen).toLocaleString('en-US') : 'Unknown';
+              let html = `<div style="font-size: 16px; font-weight: bold; color: #fff; margin-bottom: 4px;">
+                              ${d.name || d.ps} 
+                              <span style="color: #3abf9a; font-size: 14px; margin-left: 6px;">${hoveredStation.f.toFixed(1)} MHz</span>
+                          </div>`;
+              if (d.city) html += `<div style="margin-bottom: 4px;">${d.city} <span style="opacity:0.7">[${d.itu || '-'}]</span></div>`;
+              if (d.erp || d.dist) {
+                  let infos = [];
+                  if (d.erp) infos.push(`${d.erp} kW [${d.pol || '-'}]`);
+                  if (d.dist) infos.push(d.dist);
+                  if (d.azi) infos.push(d.azi);
+                  html += `<div style="font-size: 11px; color: #aaa; margin-bottom: 6px;">${infos.join(' &bull; ')}</div>`;
+              }
+              html += `<hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 6px 0;">`;
+              html += `<div style="font-size: 11px; color: #77a;">Last seen: ${dateStr}</div>`;
+
+              tooltip.innerHTML = html;
+              tooltip.style.display = 'block';
+              positionTooltip(window._retroLastClientX, window._retroLastClientY, tooltip);
+          } else if (window._retroScanHovered) {
+              tooltip.innerHTML = `<div style="font-size: 13px; font-weight: bold; color: #fff; padding: 2px;">Refresh spectrum scan</div>`;
+              tooltip.style.display = 'block';
+              positionTooltip(window._retroLastClientX, window._retroLastClientY, tooltip);
+          } else if (window._retroClearHovered) {
+              tooltip.innerHTML = `<div style="font-size: 13px; font-weight: bold; color: #fff; padding: 2px;">Clear saved PS stations</div>`;
+              tooltip.style.display = 'block';
+              positionTooltip(window._retroLastClientX, window._retroLastClientY, tooltip);
+          } else {
+              tooltip.style.display = 'none';
+          }
+      };
+
+      canvas.addEventListener('mousemove', (evt) => {
+          const rect = canvas.getBoundingClientRect();
+          window._retroLastMouseX = (evt.clientX - rect.left);
+          window._retroLastMouseY = (evt.clientY - rect.top);
+          window._retroLastClientX = evt.clientX;
+          window._retroLastClientY = evt.clientY;
+          
+          window._updateRetroTooltip();
+      });
+
+      canvas.addEventListener('mouseleave', () => {
+          tooltip.style.display = 'none';
+          window._retroLastMouseX = -999;
+          if (window._retroHoveredFreq !== null) {
+              window._retroHoveredFreq = null;
+              if (typeof lastDrawnFreq !== 'undefined') lastDrawnFreq = -999;
+          }
+      });
+      
+      function positionTooltip(clientX, clientY, tt) {
+          let tX = clientX + 15;
+          let tY = clientY + 15;
+          if (tX + tt.offsetWidth > window.innerWidth) tX = clientX - tt.offsetWidth - 15;
+          tt.style.left = tX + 'px';
+          tt.style.top = tY + 'px';
+      }
+  }
+
+  setTimeout(setupRetroTooltip, 2000);
+
+  // ── Start ─────────────────────────────────────────────────
   function start() {
     // Inject unified CSS for Magic Eye and Range Slider
     if (!document.getElementById('magic-eye-responsive-styles')) {
@@ -2323,7 +3335,9 @@ function drawScale(canvas, freq) {
         document.head.appendChild(style);
     }
 
+    setupKeyboardHooks();
     hookFrequency();
+    hookPS(); // Start the PS station observer
     addButton();
     injectSettingsUI(); 
     
