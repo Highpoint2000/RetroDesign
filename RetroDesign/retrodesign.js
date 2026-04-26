@@ -1396,7 +1396,7 @@ function startScaleDrag(evt) {
                   ctx.fillStyle = inkFaded;
               }
               
-              ctx.fillText(st.name, drawX, y, maxTextWidth * (isHovered ? hoverFactor : 1));
+              ctx.fillText(st.name, drawX, y + 1, maxTextWidth * (isHovered ? hoverFactor : 1));
               ctx.shadowBlur = 0;
 
               renderedStations.push({
@@ -2490,6 +2490,7 @@ function startScaleDrag(evt) {
               }
           }
 
+          // MUST BE AT LEAST 3 CHARACTERS
           const isValidPS = ps.length >= 3 && ps !== freqStr && !ps.match(/^[.\-]+$/) && !ps.includes("MHz");
           // Check if tuned EXACTLY to the 100kHz raster (e.g. 97.4 and not 97.45)
           const isOnCenter = Math.abs(f - currentF) <= 0.015; 
@@ -2563,15 +2564,37 @@ function startScaleDrag(evt) {
                       }
                   }
 
-                  if (isUpdated || !db[freqStr]) {
+                  let wasNew = !db[freqStr];
+                  let timeDiff = Date.now() - (entry.lastSeen || 0);
+                  
+                  // Update "last seen" timer at least every second (1000ms)
+                  let updateLastSeen = timeDiff > 1000; 
+
+                  if (isUpdated || wasNew || updateLastSeen) {
                       entry.lastSeen = Date.now();
                       db[freqStr] = entry;
                       localStorage.setItem('retro_station_db', JSON.stringify(db));
                       
-                      if (!db[freqStr] || entry.ps !== db[freqStr].ps || isUpdated) {
-                          if (typeof lastDrawnFreq !== 'undefined') lastDrawnFreq = -999;
-                          if (window.scaleCanvas) drawScale(window.scaleCanvas, f);
+                      // Inject the updated data directly into memory so the tooltip sees it
+                      if (typeof renderedStations !== 'undefined') {
+                          for (let st of renderedStations) {
+                              if (Math.abs(st.f - currentF) < 0.02) {
+                                  st.data = entry;
+                                  break;
+                              }
+                          }
                       }
+                      
+                      // Refresh the tooltip instantly if it's currently open
+                      if (typeof window._updateRetroTooltip === 'function') {
+                          window._updateRetroTooltip();
+                      }
+                  }
+
+                  // Force a full scale redraw ONLY if the text actually changed (saves CPU)
+                  if (isUpdated || wasNew) {
+                      if (typeof lastDrawnFreq !== 'undefined') lastDrawnFreq = -999;
+                      if (window.scaleCanvas) drawScale(window.scaleCanvas, f);
                   }
               }
           } 
@@ -2613,6 +2636,7 @@ function startScaleDrag(evt) {
           metaObserver.observe(nameElement, { childList: true, subtree: true, characterData: true });
       }
 
+      // Fast polling interval
       setInterval(saveCurrentPS, 800);
       saveCurrentPS();
   }
