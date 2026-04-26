@@ -3,7 +3,9 @@
 Analog frequency display, manual frequency rotary control and VU meter, as well as Magic Eye for the FM-DX web server
 
 <img width="350" height="230" alt="retrodesign2" src="https://github.com/user-attachments/assets/df67643b-4ac5-4033-a0bd-b48d3a2cd95f" />
+
 <img width="350" height="230" alt="retrodesign1" src="https://github.com/user-attachments/assets/34d1bfbd-148c-428c-b0ea-383e015f03f1" />
+
 <img width="350" height="230" alt="retrodesign3" src="https://github.com/user-attachments/assets/bd95270e-d405-469a-a3b8-d1473c9cb1b2" />
 
 
