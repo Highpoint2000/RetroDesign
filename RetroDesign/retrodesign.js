@@ -1329,12 +1329,8 @@ function startScaleDrag(evt) {
               
               let targetX = st.x;
 
-              if (index === 0) {
+              if (targetX - (baseTotalWidth / 2) < minAllowedX) {
                   targetX = minAllowedX + (baseTotalWidth / 2);
-              } else {
-                  if (targetX - (baseTotalWidth / 2) < minAllowedX) {
-                      targetX = minAllowedX + (baseTotalWidth / 2);
-                  }
               }
 
               let assignedRow = -1;
