@@ -12,6 +12,7 @@ Analog frequency display, manual frequency rotary control and VU meter, as well 
 ## Version 1.2a
 
 - Shortcut "f" or "F" added to toggle the FM Scale Button (open/close FM Scale)
+- Rounded corner design
 
 ### Note: [Enhanced Tuning](https://github.com/Overland-DX/Enhanced-Tuning) users do not need this plugin, as it is already an extended component in newer versions there! The analog frequency display is designed for FM use only. AM users, please install the Enhanced Tuning Plugin!
  
