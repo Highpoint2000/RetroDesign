@@ -1,15 +1,15 @@
 ////////////////////////////////////////////////////////////
 ///                                                      ///
-///  RETRODESIGN SCRIPT FOR FM-DX-WEBSERVER     (V1.2)   ///
+///  RETRODESIGN SCRIPT FOR FM-DX-WEBSERVER     (V1.2a)  ///
 ///                                                      ///
-///  by Highpoint                last update: 26.04.25   ///
+///  by Highpoint                last update: 27.04.25   ///
 ///                                                      ///
 ///  https://github.com/Highpoint2000/RetroDesign        ///
 ///                                                      ///
 ////////////////////////////////////////////////////////////
 
 (() => {
-  const PLUGIN_VERSION = "1.2";
+  const PLUGIN_VERSION = "1.2a";
   const PLUGIN_NAME    = "RetroDesign";
   const pluginHomepageUrl = "https://github.com/Highpoint2000/RetroDesign/releases";
   const pluginUpdateUrl   = "https://raw.githubusercontent.com/Highpoint2000/RetroDesign/main/RetroDesign/retrodesign.js";
@@ -233,7 +233,7 @@
     const { r, g, b } = parseColor(cssColor);
     return `rgba(${r},${g},${b},${alpha})`;
   }
-
+  
   // ── Apply Layout Configuration ────────────────────────────
   function applyScaleLayout() {
       if (!scaleWrap) return;
@@ -242,10 +242,11 @@
       const vuDiv = document.getElementById("analog-vu-container");
       
       if (isVuEnabled) {
-          scaleDiv.style.flex = "0 0 59%";
+          // Wir geben der Skala 5px dazu und ziehen sie beim VU-Meter ab
+          scaleDiv.style.flex = "0 0 calc(59% + 5px)"; 
           knobDiv.style.flex = "0 0 12%";
           vuDiv.style.display = "block";
-          vuDiv.style.flex = "0 0 30%"; 
+          vuDiv.style.flex = "0 0 calc(30% - 5px)"; 
       } else {
           scaleDiv.style.flex = "0 0 88%";
           knobDiv.style.flex = "0 0 12%";
@@ -403,7 +404,7 @@
     mW = sW - mX * 2 - 10;
     mH = sH * 0.80;
     
-    knobX = kW * 0.5; 
+    knobX = (kW * 0.5) - 2; 
     knobY = sH * 0.5;
     knobOuterR = Math.min(kW * 0.45, sH * 0.45); 
     knobInnerR = knobOuterR * 0.65;
@@ -692,6 +693,7 @@ function startScaleDrag(evt) {
       boxSizing       : "border-box",
       userSelect      : "none",
       webkitUserSelect: "none",
+	  borderRadius    : "10px",
     });
 
     // 1. Scale Section
@@ -727,10 +729,10 @@ function startScaleDrag(evt) {
     knobCanvas = document.createElement("canvas");
     knobCanvas.id = "analog-knob-canvas";
     Object.assign(knobCanvas.style, {
-      width      : "100%",
+      width      : "100% - 3",
       height     : "100%",
       position   : "relative",
-      marginLeft : "-10px",
+      marginLeft : "-7px",
       display    : "block",
       cursor     : "default",
       touchAction: "none",
@@ -1395,8 +1397,10 @@ function startScaleDrag(evt) {
                   }
                   ctx.fillStyle = inkFaded;
               }
+
+              const textOffsetY = isVuEnabled ? 0 : 1; 
               
-              ctx.fillText(st.name, drawX, y + 1, maxTextWidth * (isHovered ? hoverFactor : 1));
+              ctx.fillText(st.name, drawX, y + textOffsetY, maxTextWidth * (isHovered ? hoverFactor : 1));
               ctx.shadowBlur = 0;
 
               renderedStations.push({
@@ -1660,7 +1664,7 @@ function startScaleDrag(evt) {
       const mX = 10;
       const vY = mY; 
       const vH = mH;
-      const vW = w - 20;
+      const vW = w - 28;
 
       // Outer casing shadow
       ctx.save();
@@ -2975,10 +2979,17 @@ function startScaleDrag(evt) {
 
   // ── Keyboard Hooks (Arrow Keys) ──────────────────────────
   function setupKeyboardHooks() {
-      // CRITICAL FIX: Added 'true' at the end to use the Capture Phase.
-      // This intercepts the keypress BEFORE the native FM-DX webserver script can see it!
       window.addEventListener("keydown", (evt) => {
           if (document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA")) return;
+
+          // Toggle FM Scale with 'F' or 'f' ---
+          if (evt.key === "f" || evt.key === "F") {
+              evt.preventDefault();
+              evt.stopImmediatePropagation();
+              evt.stopPropagation();
+              toggle();
+              return;
+          }
 
           // ARROW LEFT/RIGHT -> OUTER RING (Coarse tuning 0.1 MHz)
           if (evt.key === "ArrowLeft" || evt.key === "ArrowRight") {
@@ -3048,7 +3059,7 @@ function startScaleDrag(evt) {
               }
               lastDrawnInnerAngle = -999; 
           }
-      }, true); // <-- CAPTURE PHASE FLAG
+      }, true);
   }
 
   function applyKnobRotation(isOuter, deltaAngle) {
@@ -3124,10 +3135,21 @@ function startScaleDrag(evt) {
   function addButton() {
     const BTN_ID = "analog-scale-btn";
     if (document.getElementById(BTN_ID)) return;
+    
     document.head.insertAdjacentHTML("beforeend", `<style>
       #${BTN_ID}:hover { filter: brightness(130%); }
       #${BTN_ID}.active { background-color: var(--color-2,#333) !important; }
+      
+      /* --- RUNDUNG, BREITEN-KORREKTUR & LÜCKENFÜLLER --- */
+      #analog-scale-wrap {
+          border-radius: 15px !important;
+          overflow: hidden !important;
+          width: calc(100%) !important;
+          -webkit-mask-image: -webkit-radial-gradient(white, black);
+           background-color: var(--color-1, #071c33) !important; 
+      }
     </style>`);
+    
     const tryAdd = (attempt = 0) => {
       if (typeof addIconToPluginPanel === "function") {
         try { 
