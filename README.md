@@ -34,11 +34,11 @@ Analog frequency display, manual frequency rotary control and VU meter, as well 
 - Spectrum Plugin Integration: Make sure the spectrum plugin is active, then activate the FM scale. To refresh the spectrum, use the refresh icon that appears.
 
 ### Keyboard Shortcuts
-airrow left  - frequency down (100 KHz step)
-airrow right - frequency up (100 KHz step)
-airrow up    - frequency up (10 KHz step)
-airrow down  - frequency down (10 KHz step)
-F or f       - open/close FM Scale
+    airrow left  - frequency down (100 KHz step)
+    airrow right - frequency up (100 KHz step)
+    airrow up    - frequency up (10 KHz step)
+    airrow down  - frequency down (10 KHz step)
+    F or f       - open/close FM Scale
 
 ### PS Scale
 
