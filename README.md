@@ -9,14 +9,9 @@ Analog frequency display, manual frequency rotary control and VU meter, as well 
 <img width="350" height="230" alt="retrodesign3" src="https://github.com/user-attachments/assets/bd95270e-d405-469a-a3b8-d1473c9cb1b2" />
 
 
-## Version 1.2
+## Version 1.2a
 
-- Automatic PS display names added as a stepped display below the scale; can be deactivated in the web server's side menu.
-- Automatic deletion of individual PS entries after 3 seconds if the frequency is empty.
-- Added a delete button to globally reset all saved PS entries.
-- Mouseover over a PS entry displays saved TX information and last seen information.
-- Added support for arrow keys to control the frequency via the keyboard, enabling the use of external wheelsets (e.g., Ulanzi Dial D100H).
-
+- Shortcut "f" or "F" added to toggle the FM Scale Button (open/close FM Scale)
 
 ### Note: [Enhanced Tuning](https://github.com/Overland-DX/Enhanced-Tuning) users do not need this plugin, as it is already an extended component in newer versions there! The analog frequency display is designed for FM use only. AM users, please install the Enhanced Tuning Plugin!
  
@@ -38,6 +33,13 @@ Analog frequency display, manual frequency rotary control and VU meter, as well 
 - Visual Component Toggles: Independently turn the Analog VU Meter and the Magic Eye on or off according to your preference.
 - Spectrum Plugin Integration: Make sure the spectrum plugin is active, then activate the FM scale. To refresh the spectrum, use the refresh icon that appears.
 
+### Keyboard Shortcuts
+airrow left  - frequency down (100 KHz step)
+airrow right - frequency up (100 KHz step)
+airrow up    - frequency up (10 KHz step)
+airrow down  - frequency down (10 KHz step)
+F or f       - open/close FM Scale
+
 ### PS Scale
 
 - PS entries are automatically displayed in a stepped format below the frequency display
@@ -54,6 +56,15 @@ If you have any questions, would like to report problems, or have suggestions fo
 
 <details>
 <summary>History</summary>
+
+### Version 1.2
+
+- Automatic PS display names added as a stepped display below the scale; can be deactivated in the web server's side menu.
+- Automatic deletion of individual PS entries after 3 seconds if the frequency is empty.
+- Added a delete button to globally reset all saved PS entries.
+- Mouseover over a PS entry displays saved TX information and last seen information.
+- Added support for arrow keys to control the frequency via the keyboard, enabling the use of external wheelsets (e.g., Ulanzi Dial D100H).
+
 
 ### Version 1.1
 
