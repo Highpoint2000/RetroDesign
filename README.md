@@ -34,20 +34,19 @@ Analog frequency display, manual frequency rotary control and VU meter, as well 
 - Spectrum Plugin Integration: Make sure the spectrum plugin is active, then activate the FM scale. To refresh the spectrum, use the refresh icon that appears.
 
 ### Keyboard Shortcuts
-airrow left  - frequency down (100 KHz step)
-airrow right - frequency up (100 KHz step)
-airrow up    - frequency up (10 KHz step)
-airrow down  - frequency down (10 KHz step)
-F or f       - open/close FM Scale
+    airrow left  - frequency down (100 KHz step)
+    airrow right - frequency up (100 KHz step)
+    airrow up    - frequency up (10 KHz step)
+    airrow down  - frequency down (10 KHz step)
+    F or f       - open/close FM Scale
 
 ### PS Scale
 
-- PS entries are automatically displayed in a stepped format below the frequency display
-- Mouseover over a PS entry displays saved TX information and last seen information
-- PS entries are automatically deleted after 3 seconds if the frequency is empty
-- The X on the left deletes all saved PS entries
-
- 
+    - PS entries are automatically displayed in a stepped format below the frequency display 
+    - Mouseover over a PS entry displays saved TX information and last seen information
+    - PS entries are automatically deleted after 3 seconds if the frequency is empty
+    - The X Button on the left side deletes all saved PS entries
+    
 ## Contact
 
 If you have any questions, would like to report problems, or have suggestions for improvement, please feel free to contact me! You can reach me by email at highpoint2000@googlemail.com. I look forward to hearing from you!
