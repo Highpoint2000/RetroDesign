@@ -1,15 +1,15 @@
 ////////////////////////////////////////////////////////////
 ///                                                      ///
-///  RETRODESIGN SCRIPT FOR FM-DX-WEBSERVER     (V1.2a)  ///
+///  RETRODESIGN SCRIPT FOR FM-DX-WEBSERVER     (V1.3)  ///
 ///                                                      ///
-///  by Highpoint                last update: 27.04.25   ///
+///  by Highpoint                last update: 29.04.25   ///
 ///                                                      ///
 ///  https://github.com/Highpoint2000/RetroDesign        ///
 ///                                                      ///
 ////////////////////////////////////////////////////////////
 
 (() => {
-  const PLUGIN_VERSION = "1.2a";
+  const PLUGIN_VERSION = "1.3";
   const PLUGIN_NAME    = "RetroDesign";
   const pluginHomepageUrl = "https://github.com/Highpoint2000/RetroDesign/releases";
   const pluginUpdateUrl   = "https://raw.githubusercontent.com/Highpoint2000/RetroDesign/main/RetroDesign/retrodesign.js";
@@ -84,7 +84,17 @@
   let isShowPsScaleEnabled = localStorage.getItem('show_ps_scale_enabled') !== 'false';
   let isVuEnabled          = localStorage.getItem('analog_vu_enabled') !== 'false';
   let isMagicEyeEnabled    = localStorage.getItem('magic_eye_enabled') !== 'false';
+  let isNixieEnabled       = localStorage.getItem('nixie_display_enabled') !== 'false'; // Default: true
   let currentBrightness    = parseFloat(localStorage.getItem('analog_scale_brightness')) || 1.50;
+
+  function applyNixieState() {
+      if (isNixieEnabled) {
+          document.body.classList.add('nixie-active');
+      } else {
+          document.body.classList.remove('nixie-active');
+      }
+  }
+  applyNixieState();
 
   // ── Drag / Tune state ─────────────────────────────────────
   let isDraggingScale = false;
@@ -242,7 +252,6 @@
       const vuDiv = document.getElementById("analog-vu-container");
       
       if (isVuEnabled) {
-          // Wir geben der Skala 5px dazu und ziehen sie beim VU-Meter ab
           scaleDiv.style.flex = "0 0 calc(59% + 5px)"; 
           knobDiv.style.flex = "0 0 12%";
           vuDiv.style.display = "block";
@@ -342,6 +351,13 @@
         toggleMagicEyeVisibility();
     });
 
+    // Add Nixie Tubes Toggle below Magic Eye
+    addToggle('nixie-display-toggle', 'ENABLE NIXIE TUBES', isNixieEnabled, (e) => {
+        isNixieEnabled = e.target.checked;
+        localStorage.setItem('nixie_display_enabled', isNixieEnabled);
+        applyNixieState();
+    });
+
     const sliderDiv = document.createElement('div');
     sliderDiv.className = 'panel-full flex-center no-bg m-0';
     sliderDiv.style.flexDirection = 'column';
@@ -367,15 +383,6 @@
   }
 
   // ── Tune command ──────────────────────────────────────────
-  function tuneTo(freq) {
-    freq = Math.round(freq * 100) / 100;
-    const input = document.getElementById("commandinput");
-    if (!input) return;
-    input.value = freq.toFixed(2);
-    input.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-  }
-
   function snapFreq(f) {
       const step = 0.1;
       let snappedOffset = Math.round((f - FM_MIN) / step) * step;
@@ -383,7 +390,6 @@
       return parseFloat(Math.max(FM_MIN, Math.min(FM_MAX, snappedFreq)).toFixed(3));
   }
 
-  // ── Drag / Inertia handlers ───────────────────────────────
   function getClientX(evt) {
     if (evt.touches && evt.touches.length > 0) return evt.touches[0].clientX;
     return evt.clientX;
@@ -408,73 +414,6 @@
     knobY = sH * 0.5;
     knobOuterR = Math.min(kW * 0.45, sH * 0.45); 
     knobInnerR = knobOuterR * 0.65;
-  }
-
-  function applyKnobRotation(isOuter, deltaAngle) {
-      let f = currentFreq !== null ? currentFreq : FM_MIN;
-
-      if (isOuter) {
-          outerKnobAngle += deltaAngle;
-          accumulatedOuterAngle += deltaAngle;
-          
-          const anglePerStep = Math.PI / 15; 
-          
-          if (Math.abs(accumulatedOuterAngle) >= anglePerStep) {
-              const steps = Math.trunc(accumulatedOuterAngle / anglePerStep);
-              accumulatedOuterAngle -= steps * anglePerStep;
-              
-              f = snapFreq(f); 
-              f += steps * 0.1;
-              f = parseFloat(f.toFixed(3));
-              f = Math.max(FM_MIN, Math.min(FM_MAX, f));
-              
-              if (dragFreq !== f) {
-                  dragFreq = f; 
-                  currentFreq = f; 
-                  
-                  const now = Date.now();
-                  if (now - lastTuneTime > TUNE_INTERVAL) { 
-                      tuneTo(f); 
-                      lastTuneTime = now; 
-                  }
-                  clearTimeout(finalTuneTimer);
-                  finalTuneTimer = setTimeout(() => { 
-                      tuneTo(f); 
-                      lastTuneTime = Date.now(); 
-                  }, 150);
-              }
-          }
-      } else {
-          innerKnobAngle += deltaAngle;
-          accumulatedInnerAngle += deltaAngle;
-          
-          const anglePerInnerStep = Math.PI / 6; 
-          
-          if (Math.abs(accumulatedInnerAngle) >= anglePerInnerStep) {
-              const steps = Math.trunc(accumulatedInnerAngle / anglePerInnerStep);
-              accumulatedInnerAngle -= steps * anglePerInnerStep;
-              
-              f += steps * 0.01;
-              f = parseFloat(f.toFixed(4));
-              f = Math.max(FM_MIN, Math.min(FM_MAX, f));
-              
-              if (dragFreq !== f) {
-                  dragFreq = f; 
-                  currentFreq = f; 
-                  
-                  const now = Date.now();
-                  if (now - lastTuneTime > TUNE_INTERVAL) { 
-                      tuneTo(f); 
-                      lastTuneTime = now; 
-                  }
-                  clearTimeout(finalTuneTimer);
-                  finalTuneTimer = setTimeout(() => { 
-                      tuneTo(f); 
-                      lastTuneTime = Date.now(); 
-                  }, 150);
-              }
-          }
-      }
   }
 
   function startKnobDrag(evt) {
@@ -599,7 +538,7 @@
     }
   }
 
-function startScaleDrag(evt) {
+  function startScaleDrag(evt) {
     if (!scaleCanvas) return;
     const rect = scaleCanvas.getBoundingClientRect();
     const x = getClientX(evt) - rect.left;
@@ -620,7 +559,6 @@ function startScaleDrag(evt) {
     const sdrBtnClick = document.getElementById('spectrum-graph-button');
     const isSpecVisibleClick = sdrBtnClick && (sdrBtnClick.classList.contains('active') || sdrBtnClick.classList.contains('bg-color-4'));
 
-    // Dynamic hitbox calculation based on visual positioning
     const paperX = mX + 2;
     const paperW = mW - 4;
     const paperH = mH - 4;
@@ -637,7 +575,6 @@ function startScaleDrag(evt) {
     const clearBtnTop = actionBtnY - 15;
     const clearBtnBottom = actionBtnY + 15;
 
-    // SCAN BUTTON (Only if spectrum is visible)
     if (isSpecVisibleClick && x >= scanBtnLeft && x <= scanBtnRight && y >= scanBtnTop && y <= scanBtnBottom) {
         const origBtn = document.getElementById('spectrum-scan-button');
         if (origBtn) origBtn.click(); 
@@ -648,7 +585,6 @@ function startScaleDrag(evt) {
         return; 
     }
 
-    // CLEAR BUTTON (Only if PS scale is enabled)
     if ((typeof isShowPsScaleEnabled !== 'undefined' && isShowPsScaleEnabled) && x >= clearBtnLeft && x <= clearBtnRight && y >= clearBtnTop && y <= clearBtnBottom) {
         if (confirm("Are you sure you want to clear all saved PS stations?")) {
             localStorage.removeItem('retro_station_db');
@@ -666,7 +602,7 @@ function startScaleDrag(evt) {
         handleGlobalMove(evt);
     }
   }
-
+  
   function ensureElements() {
     const cc = document.querySelector(".canvas-container.hide-phone");
     if (!cc) return false;
@@ -693,90 +629,48 @@ function startScaleDrag(evt) {
       boxSizing       : "border-box",
       userSelect      : "none",
       webkitUserSelect: "none",
-	  borderRadius    : "10px",
     });
 
-    // 1. Scale Section
     const scaleDiv = document.createElement("div");
     scaleDiv.id = "analog-scale-container";
-    Object.assign(scaleDiv.style, {
-      flex: "0 0 59%",
-      position: "relative",
-      height: "100%"
-    });
+    Object.assign(scaleDiv.style, { flex: "0 0 59%", position: "relative", height: "100%" });
 
     scaleCanvas = document.createElement("canvas");
     scaleCanvas.id = "analog-scale-canvas";
-    Object.assign(scaleCanvas.style, {
-      width      : "100%",
-      height     : "100%",
-      display    : "block",
-      cursor     : "default",
-      touchAction: "none",
-    });
+    Object.assign(scaleCanvas.style, { width: "100%", height: "100%", display: "block", cursor: "default", touchAction: "none" });
     scaleDiv.appendChild(scaleCanvas);
     scaleWrap.appendChild(scaleDiv);
 
-    // 2. Knob Section
     const knobDiv = document.createElement("div");
     knobDiv.id = "analog-knob-container";
-    Object.assign(knobDiv.style, {
-      flex: "0 0 12%",
-      position: "relative",
-      height: "100%"
-    });
+    Object.assign(knobDiv.style, { flex: "0 0 12%", position: "relative", height: "100%" });
 
     knobCanvas = document.createElement("canvas");
     knobCanvas.id = "analog-knob-canvas";
-    Object.assign(knobCanvas.style, {
-      width      : "100% - 3",
-      height     : "100%",
-      position   : "relative",
-      marginLeft : "-7px",
-      display    : "block",
-      cursor     : "default",
-      touchAction: "none",
-    });
+    Object.assign(knobCanvas.style, { width: "100%", height: "100%", position: "relative", marginLeft : "-10px", display: "block", cursor: "default", touchAction: "none" });
     knobDiv.appendChild(knobCanvas);
     scaleWrap.appendChild(knobDiv);
 
-    // 3. VU Meter Section
     const vuDiv = document.createElement("div");
     vuDiv.id = "analog-vu-container";
-    Object.assign(vuDiv.style, {
-      flex: "0 0 30%",
-      position: "relative",
-      marginLeft: "0px",
-      height: "100%"
-    });
+    Object.assign(vuDiv.style, { flex: "0 0 30%", position: "relative", marginLeft: "0px", height: "100%" });
 
     vuCanvas = document.createElement("canvas");
     vuCanvas.id = "analog-vu-canvas";
-    Object.assign(vuCanvas.style, {
-      width      : "100%",
-      height     : "100%",
-      display    : "block",
-      position   : "relative",
-      marginLeft : "-10px",
-      cursor     : "default",
-      touchAction: "none",
-    });
+    Object.assign(vuCanvas.style, { width: "100%", height: "100%", display: "block", position: "relative", marginLeft : "-10px", cursor: "default", touchAction: "none" });
     vuDiv.appendChild(vuCanvas);
     scaleWrap.appendChild(vuDiv);
 
     cc.appendChild(scaleWrap);
 
-    // Apply layout preferences (hide VU if necessary)
     applyScaleLayout();
 
-    // -- Event Listeners (Scale) --
     scaleCanvas.addEventListener("mousemove", (evt) => {
         if (isDraggingScale || isDraggingOuterKnob || isDraggingInnerKnob) return;
         const rect = scaleCanvas.getBoundingClientRect();
         const x = evt.clientX - rect.left;
         const y = evt.clientY - rect.top;
         
-        // 1. CHECK: HOVERING OVER STATION NAME?
         let isOverStation = false;
         if (typeof renderedStations !== 'undefined') {
             for (let st of renderedStations) {
@@ -791,48 +685,49 @@ function startScaleDrag(evt) {
             return;
         }
 
-        // 2. CHECK: IS MOUSE OVER THE REFRESH AREA?
         const sdrBtnHover = document.getElementById('spectrum-graph-button');
         const isSpecVisibleHover = sdrBtnHover && (sdrBtnHover.classList.contains('active') || sdrBtnHover.classList.contains('bg-color-4'));
 
-        // --- UPDATED HITBOX LOGIC ---
-        let scanBtnLeft, scanBtnRight, scanBtnTop, scanBtnBottom;
-        if (typeof isShowPsScaleEnabled !== 'undefined' && isShowPsScaleEnabled) {
-            scanBtnRight = mX + mW; 
-            scanBtnLeft = scanBtnRight - 40;
-            scanBtnTop = mY + 8;
-            scanBtnBottom = mY + 38;
-        } else {
-            scanBtnRight = mX + mW - 25;
-            scanBtnLeft = scanBtnRight - 50;
-            scanBtnTop = mY;
-            scanBtnBottom = mY + 30;
-        }
+        const paperX = mX + 2;
+        const paperH = mH - 4;
+        const paperW = mW - 4;
+        const baseY = (typeof isShowPsScaleEnabled !== 'undefined' && isShowPsScaleEnabled) ? (mY + 2 + paperH * 0.35) : (mY + 2 + paperH * 0.85);
+        const actionBtnY = baseY - ((typeof isShowPsScaleEnabled !== 'undefined' && isShowPsScaleEnabled) ? 5 : 15);
 
-        if (isSpecVisibleHover && x >= scanBtnLeft && x <= scanBtnRight && y >= scanBtnTop && y <= scanBtnBottom) {
+        const scanBtnLeft = paperX + paperW - 35;
+        const scanBtnRight = paperX + paperW;
+        const scanBtnTop = actionBtnY - 15;
+        const scanBtnBottom = actionBtnY + 15;
+
+        const clearBtnLeft = paperX;
+        const clearBtnRight = paperX + 35;
+        const clearBtnTop = actionBtnY - 15;
+        const clearBtnBottom = actionBtnY + 15;
+
+        let hoveringScan = isSpecVisibleHover && x >= scanBtnLeft && x <= scanBtnRight && y >= scanBtnTop && y <= scanBtnBottom;
+        let hoveringClear = (typeof isShowPsScaleEnabled !== 'undefined' && isShowPsScaleEnabled) && x >= clearBtnLeft && x <= clearBtnRight && y >= clearBtnTop && y <= clearBtnBottom;
+
+        if (hoveringScan || hoveringClear) {
             scaleCanvas.style.cursor = "pointer";
-            if (!window._retroScanHovered) {
-                window._retroScanHovered = true;
+            
+            if (hoveringScan !== window._retroScanHovered || hoveringClear !== window._retroClearHovered) {
+                window._retroScanHovered = hoveringScan;
+                window._retroClearHovered = hoveringClear;
                 if (typeof animFreq !== 'undefined' && animFreq !== null) drawScale(scaleCanvas, animFreq);
             }
             return;
         } else {
-            if (window._retroScanHovered) {
+            if (window._retroScanHovered || window._retroClearHovered) {
                 window._retroScanHovered = false;
+                window._retroClearHovered = false;
                 if (typeof animFreq !== 'undefined' && animFreq !== null) drawScale(scaleCanvas, animFreq);
             }
         }
 
-        // 3. CHECK: IS MOUSE DIRECTLY OVER THE RED NEEDLE?
-        const paperX = mX + 2;
-        const paperW = mW - 4;
         const tX = paperX + paperW * 0.04;
         const tW = paperW * 0.92;
-        
-        // Calculate the current visual X position of the needle
         const needleX = tX + ((animFreq - FM_MIN) / (FM_MAX - FM_MIN)) * tW;
         
-        // Define a "grab zone" of 10 pixels to the left and right of the needle
         const isOverNeedle = (x >= needleX - 10 && x <= needleX + 10 && y >= mY && y <= mY + mH);
 
         if (isOverNeedle) {
@@ -845,7 +740,6 @@ function startScaleDrag(evt) {
     scaleCanvas.addEventListener("mousedown",  startScaleDrag);
     scaleCanvas.addEventListener("touchstart", startScaleDrag, { passive: false });
 
-    // -- Event Listeners (Knob) --
     knobCanvas.addEventListener("mousemove", (evt) => {
         if (isDraggingScale || isDraggingOuterKnob || isDraggingInnerKnob) return;
         const rect = knobCanvas.getBoundingClientRect();
@@ -877,11 +771,9 @@ function startScaleDrag(evt) {
         }
     });
 
-    // -- Global drag listeners --
     window.addEventListener("mousemove",   handleGlobalMove);
     window.addEventListener("mouseup",     stopDrag);
     window.addEventListener("mouseleave",  stopDrag);
-    
     window.addEventListener("touchmove",   handleGlobalMove, { passive: false });
     window.addEventListener("touchend",    stopDrag);
     window.addEventListener("touchcancel", stopDrag);
@@ -1476,7 +1368,7 @@ function startScaleDrag(evt) {
       const actionBtnY = baseY - (isShowPsScaleEnabled ? 5 : 15);
       ctx.textBaseline = "middle"; 
 
-      // Refresh Button (Right side, ONLY if spectrum is visible)
+      // Refresh Button
       if (isSpecVisible) {
           ctx.font = `700 ${lblSize * 0.8}px Arial, sans-serif`; 
           let scanColor = inkFaded;
@@ -1488,14 +1380,11 @@ function startScaleDrag(evt) {
           ctx.fillStyle = scanColor; 
           ctx.textAlign = "right"; 
           
-          // Align exactly with the right margin (matches the 'MHz' label padding)
           let scanX = paperX + paperW - 5; 
-          
-          // Removed the trailing space inside the string to make it perfectly flush right
           ctx.fillText("↻", scanX, actionBtnY); 
       }
 
-      // Clear Button (Left side, ONLY if PS Scale is enabled)
+      // Clear Button
       if (isShowPsScaleEnabled) {
           ctx.font = `700 ${lblSize * 0.55}px Arial, sans-serif`; 
           let clearColor = inkFaded;
@@ -1613,7 +1502,6 @@ function startScaleDrag(evt) {
 
       ctx.restore(); 
       
-      // Instantly update tooltip if the mouse is stationary over a station while data loads
       if (typeof window._updateRetroTooltip === 'function') {
           window._updateRetroTooltip();
       }
@@ -1666,7 +1554,6 @@ function startScaleDrag(evt) {
       const vH = mH;
       const vW = w - 28;
 
-      // Outer casing shadow
       ctx.save();
       ctx.shadowColor   = "rgba(0,0,0,0.85)";
       ctx.shadowBlur    = 10;
@@ -1908,7 +1795,6 @@ function startScaleDrag(evt) {
       rowWrapper.className = 'magic-eye-row-wrapper';
       rowWrapper.style.display = "flex";
       rowWrapper.style.alignItems = "center";
-      // Center the entire group so the Eye and Text stay close together
       rowWrapper.style.justifyContent = "center"; 
       rowWrapper.style.width = "100%";
       rowWrapper.style.minWidth = "0"; 
@@ -1917,7 +1803,6 @@ function startScaleDrag(evt) {
       const textWrapper = document.createElement('div');
       textWrapper.className = 'magic-eye-text-wrapper';
       
-      // Fixed 55% width -> completely stops jitter and prevents it from pushing the Eye too far left
       textWrapper.style.flex = "0 0 55%"; 
       textWrapper.style.minWidth = "0"; 
       textWrapper.style.overflow = "hidden"; 
@@ -1967,7 +1852,6 @@ function startScaleDrag(evt) {
           return;
       }
 
-      // FPS Limit for CPU optimization
       if (timestamp && timestamp - lastMagicEyeFrame < FRAME_INTERVAL) {
           requestAnimationFrame(updateMagicEyeLoop);
           return;
@@ -2026,7 +1910,6 @@ function startScaleDrag(evt) {
       const h = magicEyeCanvas.parentElement.offsetHeight;
 
       if (w > 0 && h > 0) {
-          // ONLY REDRAW IF LEVEL CHANGED OR RESIZED (Massive CPU/RAM saver)
           if (Math.abs(magicEyeLevel - lastDrawnMagicEyeLevel) > 0.005 || magicEyeCanvas.width !== Math.round(w * dpr)) {
               magicEyeCanvas.width = Math.round(w * dpr);
               magicEyeCanvas.height = Math.round(h * dpr);
@@ -2053,9 +1936,6 @@ function startScaleDrag(evt) {
       const innerR = r * 0.88; 
       const capR = innerR * 0.45;
 
-      // ==========================================
-      // PASS 1: GENERATE PURE PHOSPHOR LIGHT
-      // ==========================================
       lCtx.clearRect(0, 0, w, h);
 
       const glowGrad = lCtx.createRadialGradient(cx, cy, 0, cx, cy, innerR);
@@ -2070,7 +1950,6 @@ function startScaleDrag(evt) {
       lCtx.arc(cx, cy, innerR, 0, Math.PI * 2);
       lCtx.fill();
 
-      // PHYSICAL CROSSHAIR
       lCtx.save();
       lCtx.globalCompositeOperation = "destination-out";
       lCtx.lineWidth = 3.5; 
@@ -2083,7 +1962,6 @@ function startScaleDrag(evt) {
       }
       lCtx.restore();
 
-      // CONCENTRIC CIRCULAR LINES
       lCtx.save();
       lCtx.globalCompositeOperation = "source-atop"; 
       lCtx.lineWidth = 1.5; 
@@ -2102,7 +1980,6 @@ function startScaleDrag(evt) {
       }
       lCtx.restore();
 
-      // DYNAMIC CURVED SHADOWS
       lCtx.globalCompositeOperation = "destination-out";
       
       const maxShadowAngle = Math.PI; 
@@ -2146,9 +2023,6 @@ function startScaleDrag(evt) {
       lCtx.shadowBlur = 0;
       lCtx.globalCompositeOperation = "source-over";
 
-      // ==========================================
-      // PASS 2: DRAW ON MAIN CANVAS
-      // ==========================================
       ctx.clearRect(0, 0, w, h);
 
       ctx.save();
@@ -2228,9 +2102,6 @@ function startScaleDrag(evt) {
 
       ctx.restore();
 
-      // ==========================================
-      // PASS 3: CATHODE CAP & SPHERICAL GLASS
-      // ==========================================
       ctx.beginPath();
       ctx.arc(cx, cy, capR, 0, Math.PI * 2);
       const capGrad = ctx.createLinearGradient(cx - capR, cy - capR, cx + capR, cy + capR);
@@ -2272,7 +2143,6 @@ function startScaleDrag(evt) {
   function renderLoop(timestamp) {
     if (!scaleCanvas || !isVisible) { rafId = null; return; }
     
-    // FPS Limit
     if (timestamp && timestamp - lastScaleFrame < FRAME_INTERVAL) {
         rafId = requestAnimationFrame(renderLoop);
         return;
@@ -2294,7 +2164,6 @@ function startScaleDrag(evt) {
     currentVuRight += (targetR > currentVuRight) ? (targetR - currentVuRight) * attack : (targetR - currentVuRight) * decay;
     
     if (isVuEnabled && vuCanvas) {
-        // ONLY REDRAW VU METER IF LEVELS CHANGED (CPU Saver)
         if (Math.abs(currentVuLeft - lastDrawnVuL) > 0.005 || Math.abs(currentVuRight - lastDrawnVuR) > 0.005) {
             drawVuMeter(vuCanvas, currentVuLeft, currentVuRight);
             lastDrawnVuL = currentVuLeft;
@@ -2302,29 +2171,25 @@ function startScaleDrag(evt) {
         }
     }
 
-    // ── Flywheel / Inertia Engine (Knobs spinning down) ──
     if (!isDraggingOuterKnob && Math.abs(outerVelocity) > 0.001) {
-        outerVelocity *= FRICTION; // Friction slows the wheel
+        outerVelocity *= FRICTION; 
         applyKnobRotation(true, outerVelocity);
     } else if (!isDraggingOuterKnob) {
         outerVelocity = 0;
     }
 
     if (!isDraggingInnerKnob && Math.abs(innerVelocity) > 0.001) {
-        innerVelocity *= FRICTION; // Friction slows the wheel
+        innerVelocity *= FRICTION; 
         applyKnobRotation(false, innerVelocity);
     } else if (!isDraggingInnerKnob) {
         innerVelocity = 0;
     }
-    // ──────────────────────────────────────────────────────
 
-    // Needle trailing smoothly
     if (!isDraggingScale) {
       const diff = currentFreq - animFreq;
       animFreq += Math.abs(diff) > 0.002 ? diff * SMOOTHING : diff;
     }
     
-    // ONLY REDRAW SCALE IF FREQUENCY MOVED *OR* IF A SCAN WAS JUST TRIGGERED
     const isForcedRedraw = window._forceRedrawUntil && Date.now() < window._forceRedrawUntil;
     
     if (Math.abs(animFreq - lastDrawnFreq) > 0.001 || isForcedRedraw) {
@@ -2332,7 +2197,6 @@ function startScaleDrag(evt) {
         lastDrawnFreq = animFreq;
     }
 
-    // ONLY REDRAW KNOBS IF THEY ROTATED
     if (knobCanvas) {
         if (Math.abs(outerKnobAngle - lastDrawnOuterAngle) > 0.005 || Math.abs(innerKnobAngle - lastDrawnInnerAngle) > 0.005) {
             drawKnob(knobCanvas);
@@ -2386,12 +2250,9 @@ function startScaleDrag(evt) {
       const applyFreq = (v) => {
           if (isDraggingScale || isDraggingInnerKnob || isDraggingOuterKnob || Math.abs(innerVelocity) > 0.001 || Math.abs(outerVelocity) > 0.001) return;
           
-          // PREVENT RUBBER-BANDING:
-          // If we recently tuned (within the last 1.5 seconds) and the server sends an old frequency 
-          // that does NOT match our target frequency, we ignore it.
           if (Date.now() - lastTuneTime < 1500) {
               if (currentFreq !== null && Math.abs(v - currentFreq) > 0.005) {
-                  return; // Ignore intermediate echoes from the server
+                  return; 
               }
           }
           
@@ -2401,7 +2262,6 @@ function startScaleDrag(evt) {
               } else if (currentFreq !== v) {
                   let diff = v - currentFreq;
                   
-                  // Rotate the active knob visually if the frequency change came from outside
                   if (!isDraggingInnerKnob && Math.abs(innerVelocity) < 0.001 && isFineTuningMode) {
                       innerKnobAngle += (diff / 0.1) * (Math.PI / 6);
                   }
@@ -2434,7 +2294,7 @@ function startScaleDrag(evt) {
       }
   }
 
-// ── RDS PS DB Hook (WITH STRICT METADATA VALIDATION & FULL DELETE) ──────────────────────────
+  // ── RDS PS DB Hook ──────────────────────────
   function hookPS() {
       const psElement = document.getElementById("data-ps");
       const freqElement = document.getElementById("data-frequency");
@@ -2447,7 +2307,6 @@ function startScaleDrag(evt) {
       let deleteTimer = null;
       let activeDeleteFreq = null;
       
-      // Track session frequency and PS stability
       let lastFreq = null;
       let freqSettledTime = Date.now();
       let lastPS = null;
@@ -2467,7 +2326,6 @@ function startScaleDrag(evt) {
           const f = getExactFreq();
           if (f === null) return;
           
-          // Reset frequency cooldown timer when frequency changes
           if (f !== lastFreq) {
               lastFreq = f;
               freqSettledTime = Date.now();
@@ -2476,7 +2334,6 @@ function startScaleDrag(evt) {
           const rawText = psElement.innerText || psElement.textContent || "";
           const ps = rawText.replace(/\u00A0/g, ' ').trim(); 
           
-          // Reset PS cooldown timer when PS text changes in the UI
           if (ps !== lastPS) {
               lastPS = ps;
               psSettledTime = Date.now();
@@ -2487,16 +2344,13 @@ function startScaleDrag(evt) {
           
           let db = JSON.parse(localStorage.getItem('retro_station_db') || '{}');
 
-          // Migration of old data formats
           for (let key in db) {
               if (typeof db[key] === 'string') {
                   db[key] = { ps: db[key], lastSeen: Date.now(), active: true };
               }
           }
 
-          // MUST BE AT LEAST 3 CHARACTERS
           const isValidPS = ps.length >= 3 && ps !== freqStr && !ps.match(/^[.\-]+$/) && !ps.includes("MHz");
-          // Check if tuned EXACTLY to the 100kHz raster (e.g. 97.4 and not 97.45)
           const isOnCenter = Math.abs(f - currentF) <= 0.015; 
 
           if (isValidPS) {
@@ -2508,7 +2362,6 @@ function startScaleDrag(evt) {
 
               let shouldSave = true;
 
-              // Anti-jitter duplicate check for adjacent frequencies
               for (let key in db) {
                   if (db[key].ps === ps && key !== freqStr) {
                       let existingF = parseFloat(key);
@@ -2524,7 +2377,6 @@ function startScaleDrag(evt) {
                   let entry = db[freqStr] || { ps: ps };
                   let isUpdated = false;
 
-                  // STRICT VALIDATION: If PS changes, wipe all old metadata
                   if (entry.ps !== ps) { 
                       entry.ps = ps; 
                       isUpdated = true; 
@@ -2540,8 +2392,6 @@ function startScaleDrag(evt) {
                   
                   if (entry.active !== true) { entry.active = true; isUpdated = true; }
                   
-                  // IMPORTANT: Wait only 400ms before grabbing metadata for blazing fast updates.
-                  // We check the UI tracking variables, NOT the database object!
                   if (Date.now() - freqSettledTime > 400 && Date.now() - psSettledTime > 400) {
                       const domFreq = parseFloat(getTxt("data-frequency"));
                       if (Math.abs(domFreq - currentF) < 0.02) {
@@ -2571,7 +2421,6 @@ function startScaleDrag(evt) {
                   let wasNew = !db[freqStr];
                   let timeDiff = Date.now() - (entry.lastSeen || 0);
                   
-                  // Update "last seen" timer at least every second (1000ms)
                   let updateLastSeen = timeDiff > 1000; 
 
                   if (isUpdated || wasNew || updateLastSeen) {
@@ -2579,7 +2428,6 @@ function startScaleDrag(evt) {
                       db[freqStr] = entry;
                       localStorage.setItem('retro_station_db', JSON.stringify(db));
                       
-                      // Inject the updated data directly into memory so the tooltip sees it
                       if (typeof renderedStations !== 'undefined') {
                           for (let st of renderedStations) {
                               if (Math.abs(st.f - currentF) < 0.02) {
@@ -2589,13 +2437,11 @@ function startScaleDrag(evt) {
                           }
                       }
                       
-                      // Refresh the tooltip instantly if it's currently open
                       if (typeof window._updateRetroTooltip === 'function') {
                           window._updateRetroTooltip();
                       }
                   }
 
-                  // Force a full scale redraw ONLY if the text actually changed (saves CPU)
                   if (isUpdated || wasNew) {
                       if (typeof lastDrawnFreq !== 'undefined') lastDrawnFreq = -999;
                       if (window.scaleCanvas) drawScale(window.scaleCanvas, f);
@@ -2603,7 +2449,6 @@ function startScaleDrag(evt) {
               }
           } 
           else {
-              // --- FULL DELETE AFTER 3 SECONDS INACTIVE ---
               if (isOnCenter && db[freqStr]) {
                   if (activeDeleteFreq !== freqStr) {
                       clearTimeout(deleteTimer);
@@ -2640,191 +2485,8 @@ function startScaleDrag(evt) {
           metaObserver.observe(nameElement, { childList: true, subtree: true, characterData: true });
       }
 
-      // Fast polling interval
       setInterval(saveCurrentPS, 800);
       saveCurrentPS();
-  }
-
-  // ── DOM elements ──────────────────────────────────────────
-  function ensureElements() {
-    const cc = document.querySelector(".canvas-container.hide-phone");
-    if (!cc) return false;
-    if (document.getElementById("analog-scale-wrap")) {
-      scaleWrap   = document.getElementById("analog-scale-wrap");
-      scaleCanvas = document.getElementById("analog-scale-canvas");
-      knobCanvas  = document.getElementById("analog-knob-canvas");
-      vuCanvas    = document.getElementById("analog-vu-canvas");
-      return true;
-    }
-
-    scaleWrap = document.createElement("div");
-    scaleWrap.id = "analog-scale-wrap";
-    Object.assign(scaleWrap.style, {
-      display         : "none",  
-      flexDirection   : "row",
-      width           : "100%",
-      height          : "160px",
-      position        : "relative",
-      zIndex          : "5",
-      transform       : "translate(10px, -20px)", 
-      marginBottom    : "-35px", 
-      overflow        : "hidden",
-      boxSizing       : "border-box",
-      userSelect      : "none",
-      webkitUserSelect: "none",
-    });
-
-    const scaleDiv = document.createElement("div");
-    scaleDiv.id = "analog-scale-container";
-    Object.assign(scaleDiv.style, { flex: "0 0 59%", position: "relative", height: "100%" });
-
-    scaleCanvas = document.createElement("canvas");
-    scaleCanvas.id = "analog-scale-canvas";
-    Object.assign(scaleCanvas.style, { width: "100%", height: "100%", display: "block", cursor: "default", touchAction: "none" });
-    scaleDiv.appendChild(scaleCanvas);
-    scaleWrap.appendChild(scaleDiv);
-
-    const knobDiv = document.createElement("div");
-    knobDiv.id = "analog-knob-container";
-    Object.assign(knobDiv.style, { flex: "0 0 12%", position: "relative", height: "100%" });
-
-    knobCanvas = document.createElement("canvas");
-    knobCanvas.id = "analog-knob-canvas";
-    Object.assign(knobCanvas.style, { width: "100%", height: "100%", position: "relative", marginLeft : "-10px", display: "block", cursor: "default", touchAction: "none" });
-    knobDiv.appendChild(knobCanvas);
-    scaleWrap.appendChild(knobDiv);
-
-    const vuDiv = document.createElement("div");
-    vuDiv.id = "analog-vu-container";
-    Object.assign(vuDiv.style, { flex: "0 0 30%", position: "relative", marginLeft: "0px", height: "100%" });
-
-    vuCanvas = document.createElement("canvas");
-    vuCanvas.id = "analog-vu-canvas";
-    Object.assign(vuCanvas.style, { width: "100%", height: "100%", display: "block", position: "relative", marginLeft : "-10px", cursor: "default", touchAction: "none" });
-    vuDiv.appendChild(vuCanvas);
-    scaleWrap.appendChild(vuDiv);
-
-    cc.appendChild(scaleWrap);
-
-    applyScaleLayout();
-
-    scaleCanvas.addEventListener("mousemove", (evt) => {
-        if (isDraggingScale || isDraggingOuterKnob || isDraggingInnerKnob) return;
-        const rect = scaleCanvas.getBoundingClientRect();
-        const x = evt.clientX - rect.left;
-        const y = evt.clientY - rect.top;
-        
-        let isOverStation = false;
-        if (typeof renderedStations !== 'undefined') {
-            for (let st of renderedStations) {
-                if (x >= st.left && x <= st.right && y >= st.top && y <= st.bottom) {
-                    isOverStation = true;
-                    break;
-                }
-            }
-        }
-        if (isOverStation) {
-            scaleCanvas.style.cursor = "pointer";
-            return;
-        }
-
-        const sdrBtnHover = document.getElementById('spectrum-graph-button');
-        const isSpecVisibleHover = sdrBtnHover && (sdrBtnHover.classList.contains('active') || sdrBtnHover.classList.contains('bg-color-4'));
-
-        // Dynamic hitbox calculation for hover
-        const paperX = mX + 2;
-        const paperH = mH - 4;
-        const paperW = mW - 4;
-        const baseY = (typeof isShowPsScaleEnabled !== 'undefined' && isShowPsScaleEnabled) ? (mY + 2 + paperH * 0.35) : (mY + 2 + paperH * 0.85);
-        const actionBtnY = baseY - ((typeof isShowPsScaleEnabled !== 'undefined' && isShowPsScaleEnabled) ? 5 : 15);
-
-        const scanBtnLeft = paperX + paperW - 35;
-        const scanBtnRight = paperX + paperW;
-        const scanBtnTop = actionBtnY - 15;
-        const scanBtnBottom = actionBtnY + 15;
-
-        const clearBtnLeft = paperX;
-        const clearBtnRight = paperX + 35;
-        const clearBtnTop = actionBtnY - 15;
-        const clearBtnBottom = actionBtnY + 15;
-
-        let hoveringScan = isSpecVisibleHover && x >= scanBtnLeft && x <= scanBtnRight && y >= scanBtnTop && y <= scanBtnBottom;
-        let hoveringClear = (typeof isShowPsScaleEnabled !== 'undefined' && isShowPsScaleEnabled) && x >= clearBtnLeft && x <= clearBtnRight && y >= clearBtnTop && y <= clearBtnBottom;
-
-        if (hoveringScan || hoveringClear) {
-            scaleCanvas.style.cursor = "pointer";
-            
-            if (hoveringScan !== window._retroScanHovered || hoveringClear !== window._retroClearHovered) {
-                window._retroScanHovered = hoveringScan;
-                window._retroClearHovered = hoveringClear;
-                if (typeof animFreq !== 'undefined' && animFreq !== null) drawScale(scaleCanvas, animFreq);
-            }
-            return;
-        } else {
-            if (window._retroScanHovered || window._retroClearHovered) {
-                window._retroScanHovered = false;
-                window._retroClearHovered = false;
-                if (typeof animFreq !== 'undefined' && animFreq !== null) drawScale(scaleCanvas, animFreq);
-            }
-        }
-
-        const tX = paperX + paperW * 0.04;
-        const tW = paperW * 0.92;
-        const needleX = tX + ((animFreq - FM_MIN) / (FM_MAX - FM_MIN)) * tW;
-        
-        const isOverNeedle = (x >= needleX - 10 && x <= needleX + 10 && y >= mY && y <= mY + mH);
-
-        if (isOverNeedle) {
-            scaleCanvas.style.cursor = "ew-resize";
-        } else {
-            scaleCanvas.style.cursor = "default";
-        }
-    });
-
-    scaleCanvas.addEventListener("mousedown",  startScaleDrag);
-    scaleCanvas.addEventListener("touchstart", startScaleDrag, { passive: false });
-
-    knobCanvas.addEventListener("mousemove", (evt) => {
-        if (isDraggingScale || isDraggingOuterKnob || isDraggingInnerKnob) return;
-        const rect = knobCanvas.getBoundingClientRect();
-        const x = evt.clientX - rect.left;
-        const y = evt.clientY - rect.top;
-        const distSq = (x - knobX) * (x - knobX) + (y - knobY) * (y - knobY);
-        
-        if (distSq <= knobOuterR * knobOuterR) {
-            knobCanvas.style.cursor = "grab";
-        } else {
-            knobCanvas.style.cursor = "default";
-        }
-    });
-    knobCanvas.addEventListener("mousedown",  startKnobDrag);
-    knobCanvas.addEventListener("touchstart", startKnobDrag, { passive: false });
-	
-    knobCanvas.addEventListener("dblclick", (evt) => {
-        const rect = knobCanvas.getBoundingClientRect();
-        const x = evt.clientX - rect.left;
-        const y = evt.clientY - rect.top;
-        const distSq = (x - knobX) * (x - knobX) + (y - knobY) * (y - knobY);
-        
-        if (distSq <= knobInnerR * knobInnerR) {
-            if (currentFreq !== null) {
-                let sFreq = snapFreq(currentFreq);
-                currentFreq = sFreq; animFreq = sFreq; dragFreq = sFreq;
-                tuneTo(sFreq);
-            }
-        }
-    });
-
-    window.addEventListener("mousemove",   handleGlobalMove);
-    window.addEventListener("mouseup",     stopDrag);
-    window.addEventListener("mouseleave",  stopDrag);
-    window.addEventListener("touchmove",   handleGlobalMove, { passive: false });
-    window.addEventListener("touchend",    stopDrag);
-    window.addEventListener("touchcancel", stopDrag);
-
-    resizeCanvas();
-    window.addEventListener("resize", resizeCanvas);
-    return true;
   }
 
   // ── Show / hide ───────────────────────────────────────────
@@ -2891,80 +2553,6 @@ function startScaleDrag(evt) {
       if (btn) btn.classList.add("active");
     }
   }
-  
-  // ── Keyboard Hooks (Arrow Keys) ──────────────────────────
-  function setupKeyboardHooks() {
-      window.addEventListener("keydown", (evt) => {
-          if (document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA")) return;
-
-          // ARROW LEFT/RIGHT -> OUTER RING (Coarse tuning 0.1 MHz)
-          if (evt.key === "ArrowLeft" || evt.key === "ArrowRight") {
-              evt.preventDefault();
-              evt.stopPropagation(); // Verhindert, dass das originale Webinterface dazwischenfunkt
-              isFineTuningMode = false; 
-              
-              const dir = (evt.key === "ArrowRight") ? 1 : -1;
-              outerKnobAngle += (Math.PI / 15) * dir; 
-              
-              let f = currentFreq !== null ? currentFreq : FM_MIN;
-              f = snapFreq(f); 
-              f += 0.1 * dir;
-              f = parseFloat(f.toFixed(3));
-              f = Math.max(FM_MIN, Math.min(FM_MAX, f));
-              
-              if (dragFreq !== f) {
-                  dragFreq = f; 
-                  currentFreq = f; 
-                  window._retroTargetFreq = f; // Ziel-Frequenz für den Sync setzen
-                  
-                  const now = Date.now();
-                  if (now - lastTuneTime > TUNE_INTERVAL) { 
-                      tuneTo(f); 
-                      lastTuneTime = now; 
-                  }
-                  clearTimeout(finalTuneTimer);
-                  finalTuneTimer = setTimeout(() => { 
-                      tuneTo(f); 
-                      lastTuneTime = Date.now(); 
-                  }, 150);
-              }
-              lastDrawnOuterAngle = -999; 
-          }
-          
-          // ARROW UP/DOWN -> INNER RING (Fine tuning 0.01 MHz)
-          else if (evt.key === "ArrowUp" || evt.key === "ArrowDown") {
-              evt.preventDefault();
-              evt.stopPropagation();
-              isFineTuningMode = true; 
-              
-              const dir = (evt.key === "ArrowUp") ? 1 : -1;
-              innerKnobAngle += (Math.PI / 6) * dir; 
-              
-              let f = currentFreq !== null ? currentFreq : FM_MIN;
-              f += 0.01 * dir;
-              f = parseFloat(f.toFixed(4));
-              f = Math.max(FM_MIN, Math.min(FM_MAX, f));
-              
-              if (dragFreq !== f) {
-                  dragFreq = f; 
-                  currentFreq = f; 
-                  window._retroTargetFreq = f; // Ziel-Frequenz für den Sync setzen
-                  
-                  const now = Date.now();
-                  if (now - lastTuneTime > TUNE_INTERVAL) { 
-                      tuneTo(f); 
-                      lastTuneTime = now; 
-                  }
-                  clearTimeout(finalTuneTimer);
-                  finalTuneTimer = setTimeout(() => { 
-                      tuneTo(f); 
-                      lastTuneTime = Date.now(); 
-                  }, 150);
-              }
-              lastDrawnInnerAngle = -999; 
-          }
-      });
-  }
 
   function tuneTo(freq) {
       freq = Math.round(freq * 100) / 100;
@@ -2972,8 +2560,6 @@ function startScaleDrag(evt) {
       if (!input) return;
       input.value = freq.toFixed(2);
       
-      // CRITICAL FIX: Only dispatch the Enter key! 
-      // Removed the duplicate "change" event that caused the server to double-fire every single tune command.
       input.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true }));
   }
 
@@ -2994,7 +2580,7 @@ function startScaleDrag(evt) {
           // ARROW LEFT/RIGHT -> OUTER RING (Coarse tuning 0.1 MHz)
           if (evt.key === "ArrowLeft" || evt.key === "ArrowRight") {
               evt.preventDefault();
-              evt.stopImmediatePropagation(); // Kills the native webserver's hidden keyboard shortcuts
+              evt.stopImmediatePropagation(); 
               evt.stopPropagation();
               isFineTuningMode = false; 
               
@@ -3029,7 +2615,7 @@ function startScaleDrag(evt) {
           // ARROW UP/DOWN -> INNER RING (Fine tuning 0.01 MHz)
           else if (evt.key === "ArrowUp" || evt.key === "ArrowDown") {
               evt.preventDefault();
-              evt.stopImmediatePropagation(); // Kills native webserver shortcuts
+              evt.stopImmediatePropagation(); 
               evt.stopPropagation();
               isFineTuningMode = true; 
               
@@ -3084,8 +2670,6 @@ function startScaleDrag(evt) {
                   currentFreq = f; 
                   window._retroTargetFreq = f; 
                   
-                  // CRITICAL FIX: Increased interval to 250ms.
-                  // Prevents the "flywheel" physics engine from DDOS-ing the webserver during fast spins.
                   const now = Date.now();
                   if (now - lastTuneTime > 250) { 
                       tuneTo(f); 
@@ -3095,7 +2679,7 @@ function startScaleDrag(evt) {
                   finalTuneTimer = setTimeout(() => { 
                       tuneTo(f); 
                       lastTuneTime = Date.now(); 
-                  }, 300); // Guarantees the final frequency lands cleanly
+                  }, 300); 
               }
           }
       } else {
@@ -3140,7 +2724,6 @@ function startScaleDrag(evt) {
       #${BTN_ID}:hover { filter: brightness(130%); }
       #${BTN_ID}.active { background-color: var(--color-2,#333) !important; }
       
-      /* --- RUNDUNG, BREITEN-KORREKTUR & LÜCKENFÜLLER --- */
       #analog-scale-wrap {
           border-radius: 15px !important;
           overflow: hidden !important;
@@ -3220,13 +2803,11 @@ function startScaleDrag(evt) {
           document.body.appendChild(tooltip);
       }
 
-      // Global variables to remember the exact mouse position when stationary
       window._retroLastMouseX = -999;
       window._retroLastMouseY = -999;
       window._retroLastClientX = -999;
       window._retroLastClientY = -999;
 
-      // Make the update function globally accessible so drawScale can trigger it
       window._updateRetroTooltip = function() {
           if (window._retroLastMouseX === -999) return;
 
@@ -3253,7 +2834,6 @@ function startScaleDrag(evt) {
               }
           }
 
-          // --- TOOLTIP DISPLAY LOGIC ---
           if (hoveredStation && hoveredStation.data) {
               const d = hoveredStation.data;
               const dateStr = d.lastSeen ? new Date(d.lastSeen).toLocaleString('en-US') : 'Unknown';
@@ -3318,6 +2898,454 @@ function startScaleDrag(evt) {
 
   setTimeout(setupRetroTooltip, 2000);
 
+  // ── NIXIE TUBE ENGINE ───────────────────────────────────────────────────
+  function initNixieDisplay() {
+      // Prevent double initialization
+      if (window._nixieInitDone) return;
+      window._nixieInitDone = true;
+
+      // 1. Load sharp wire font
+      const fontLink = document.createElement('link');
+      fontLink.href = 'https://fonts.googleapis.com/css2?family=Saira+Extra+Condensed:wght@100;200;300&display=swap';
+      fontLink.rel = 'stylesheet';
+      document.head.appendChild(fontLink);
+
+      // 2. Add Nixie CSS logic
+      const style = document.createElement('style');
+      style.innerHTML = `
+          /* --- NIXIE ACTIVE: Hide originals completely --- */
+          body.nixie-active #data-frequency, 
+          body.nixie-active #data-ps, 
+          body.nixie-active #data-pi, 
+          body.nixie-active #data-signal, 
+          body.nixie-active #data-signal-decimal, 
+          body.nixie-active .data-pty, 
+          body.nixie-active .data-tp, 
+          body.nixie-active .data-ta, 
+          body.nixie-active .data-ms, 
+          body.nixie-active .stereo-container, 
+          body.nixie-active .nx-hide-original { 
+              display: none !important; 
+          }
+
+          /* --- NIXIE INACTIVE: Hide Nixie tubes completely --- */
+          body:not(.nixie-active) .nx-tube-container,
+          body:not(.nixie-active) .nx-pty-block,
+          body:not(.nixie-active) .nx-flags-row {
+              display: none !important;
+          }
+
+          /* --- BACKGROUND WITH THEME COLOR (ONLY WHEN NIXIE ACTIVE) --- */
+          body.nixie-active #flags-container-desktop, 
+          body.nixie-active #flags-container-phone {
+              background: color-mix(in srgb, var(--color-1) 50%, transparent) !important;
+              background-color: color-mix(in srgb, var(--color-1) 50%, transparent) !important;
+              box-shadow: none !important;
+              border: none !important;
+              transition: background 0.15s ease-in-out !important;
+          }
+
+          body.nixie-active #flags-container-desktop:hover, 
+          body.nixie-active #flags-container-phone:hover {
+              background: color-mix(in srgb, var(--color-2) 70%, transparent) !important;
+              background-color: color-mix(in srgb, var(--color-2) 70%, transparent) !important;
+          }
+
+          /* FIX FOR RETRODESIGN PLUGIN CONFLICT & MAGIC EYE DISPLACEMENT */
+          body.nixie-active .magic-eye-text-wrapper { flex: 1 1 auto !important; width: auto !important; min-width: fit-content !important; max-width: none !important; }
+          body.nixie-active .magic-eye-row-wrapper { justify-content: center !important; gap: 8px !important; }
+          body.nixie-active #magic-eye-wrapper { transform: translateX(20px) !important; } /* Moves the eye 20px closer to the tubes */
+
+          /* Nixie-Container Layout */
+          .nx-tube-container {
+              display: flex; justify-content: center; align-items: flex-end;
+              gap: 2px; margin-top: 1px; margin-bottom: 1px; line-height: 1;
+          }
+
+          /* PTY & FLAGS Layout */
+          .nx-pty-block {
+              display: flex; flex-direction: column; align-items: center;
+              width: max-content; margin: 0 auto;
+          }
+          .nx-flags-row {
+              display: flex; justify-content: space-between; align-items: center;
+              width: 100%; margin-top: 4px;
+          }
+          
+          .nx-ecc-wrapper {
+              display: flex; align-items: center; justify-content: center;
+              min-width: 25px; padding: 0 4px;
+          }
+          .nx-ecc-wrapper i { font-size: 16px !important; border-radius: 2px; }
+
+          /* --- CLICK EFFECTS FOR ST TUBE --- */
+          #nx-st-desktop, #nx-st-phone { 
+              cursor: pointer; 
+          }
+          #nx-st-desktop:hover .nx-char, #nx-st-phone:hover .nx-char { 
+              filter: saturate(2) brightness(1.6) !important; 
+          }
+
+          /* --- BASE TUBE DESIGN --- */
+          .nx-tube {
+              position: relative;
+              background: linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(0,0,0,0.15) 20%, rgba(0,0,0,0.3) 80%, rgba(255,255,255,0.02) 100%);
+              border: 1px solid rgba(255, 255, 255, 0.08); border-bottom: none;
+              box-shadow: inset 0 -15px 15px -5px color-mix(in srgb, var(--color-4, #0050ff) 70%, transparent), 0 10px 15px -5px color-mix(in srgb, var(--color-4, #0050ff) 40%, transparent);
+              overflow: hidden;
+          }
+          .nx-tube::after { content: ''; position: absolute; bottom: 0; left: 0; width: 100%; height: 3px; background: #050505; border-top: 1px solid #333; z-index: 10; }
+
+          .nx-unlit-layer {
+              position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+              display: flex; align-items: center; justify-content: center;
+              font-family: 'Saira Extra Condensed', sans-serif; font-weight: 100;
+              color: transparent; -webkit-text-stroke: 1px rgba(200, 200, 220, 0.12); 
+              z-index: 1; user-select: none;
+          }
+
+          /* --- NORMAL GLOWING DIGIT --- */
+          .nx-char {
+              position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+              display: flex; align-items: center; justify-content: center;
+              font-family: 'Saira Extra Condensed', sans-serif; font-weight: 300; line-height: 1;
+              color: #ff8833; 
+              text-shadow: 
+                  0 0 5px #ff4400, 
+                  0 0 10px #ff2200, 
+                  0 0 20px #ff0000, 
+                  0 0 35px #ff0000;
+              z-index: 5; user-select: none; transition: opacity 0.25s ease-in-out; opacity: 1;
+          }
+          
+          /* --- EXTREME SATURATION & GLOW FOR PTY AND FLAGS --- */
+          .nx-pty-block .nx-char,
+          .nx-flags-row .nx-char {
+              color: #ff6600 !important; 
+              text-shadow: 
+                  0 0 5px #ff4400, 
+                  0 0 12px #ff2200, 
+                  0 0 25px #ff0000, 
+                  0 0 45px #ff0000,
+                  0 0 70px rgba(255, 30, 0, 0.6) !important;
+              font-weight: 500 !important; 
+              filter: saturate(1.7) brightness(1.3); 
+          }
+          .nx-char.nx-off { opacity: 0 !important; }
+
+          .nx-mesh { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-image: url("data:image/svg+xml,%3Csvg width='10' height='17.32' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M5 0 L10 2.88 L10 8.66 L5 11.54 L0 8.66 L0 2.88 Z M0 11.54 L5 14.42 L5 20.18 M10 11.54 L15 14.42' stroke='rgba(220,220,240,0.25)' stroke-width='0.6' fill='none'/%3E%3C/svg%3E"); z-index: 7; pointer-events: none; }
+          .nx-glass { position: absolute; top: 2px; left: 3px; width: 6px; height: 95%; background: linear-gradient(90deg, rgba(255,255,255,0.3) 0%, transparent 100%); border-radius: 15px 0 0 0; z-index: 8; pointer-events: none; }
+
+          /* SIZES */
+          .nx-tube-container[data-nx-size="large"] { height: 72px; }
+          .nx-tube-container[data-nx-size="large"] .nx-tube { width: 32px; height: 68px; border-radius: 16px 16px 0 0; }
+          .nx-tube-container[data-nx-size="large"] .nx-char { font-size: 52px; }
+          .nx-tube-container[data-nx-size="medium"] { height: 60px; display: inline-flex; vertical-align: bottom; }
+          .nx-tube-container[data-nx-size="medium"] .nx-tube { width: 24px; height: 56px; border-radius: 12px 12px 0 0; }
+          .nx-tube-container[data-nx-size="medium"] .nx-char { font-size: 40px; }
+          .nx-tube-container[data-nx-size="small"] { height: 40px; display: inline-flex; vertical-align: bottom; }
+          .nx-tube-container[data-nx-size="small"] .nx-tube { width: 18px; height: 36px; border-radius: 9px 9px 0 0; }
+          .nx-tube-container[data-nx-size="small"] .nx-char { font-size: 24px; }
+          .nx-tube-dot { width: 10px !important; border-radius: 5px 5px 0 0 !important; }
+          .nx-tube-container[data-nx-size="medium"] .nx-tube-dot { height: 56px !important; width: 8px !important; }
+          .nx-tube-dot .nx-char { font-size: 32px !important; align-items: flex-end; padding-bottom: 4px; }
+          .nx-tube-container[data-nx-size="medium"] .nx-tube-dot .nx-char { font-size: 24px !important; padding-bottom: 2px; }
+      `;
+      document.head.appendChild(style);
+
+      // 3. PTY Table
+      const PTY_TABLE = [
+          "PTY", "News", "Current Affairs", "Info",
+          "Sport", "Education", "Drama", "Culture", "Science", "Varied",
+          "Pop Music", "Rock Music", "Easy Listening", "Light Classical",
+          "Serious Classical", "Other Music", "Weather", "Finance",
+          "Children's Programmes", "Social Affairs", "Religion", "Phone-in",
+          "Travel", "Leisure", "Jazz Music", "Country Music", "National Music",
+          "Oldies Music", "Folk Music", "Documentary"
+      ];
+
+      const createTube = (char, isDot) => {
+          let tube = document.createElement('div');
+          if (isDot) {
+              tube.className = 'nx-tube nx-tube-dot';
+              tube.innerHTML = `<div class="nx-mesh"></div><div class="nx-char">.</div><div class="nx-glass"></div>`;
+          } else {
+              tube.className = 'nx-tube';
+              tube.innerHTML = `<div class="nx-unlit-layer">8</div><div class="nx-mesh"></div><div class="nx-glass"></div><div class="nx-char nx-off">${char}</div>`;
+          }
+          return tube;
+      };
+
+      const setTubeText = (containerId, text, turnOn = true) => {
+          const container = document.getElementById(containerId);
+          if (!container) return;
+          
+          if (container.children.length !== text.length) {
+              container.innerHTML = '';
+              for (let i = 0; i < text.length; i++) {
+                  container.appendChild(createTube(text[i], text[i] === '.'));
+              }
+          }
+          
+          const tubes = container.children;
+          for (let i = 0; i < text.length; i++) {
+              if (tubes[i].classList.contains('nx-tube-dot')) continue;
+              let charDiv = tubes[i].querySelector('.nx-char');
+              if (charDiv) {
+                  if (!turnOn || text[i] === ' ' || text[i] === '') charDiv.classList.add('nx-off');
+                  else { charDiv.innerText = text[i]; charDiv.classList.remove('nx-off'); }
+              }
+          }
+      };
+
+      const setTubeFlag = (containerId, isOn) => {
+          const container = document.getElementById(containerId);
+          if (!container) return;
+          const tubes = container.children;
+          for (let i = 0; i < tubes.length; i++) {
+              let charDiv = tubes[i].querySelector('.nx-char');
+              if (charDiv) isOn ? charDiv.classList.remove('nx-off') : charDiv.classList.add('nx-off');
+          }
+      };
+
+      // Buffer for MS & LIC status so we always know both values
+      window._nxState = { ms: 0, lic: 0 };
+
+      // --- PART 1: Build PTY and FLAGS ---
+      const flagContainers = [
+          document.getElementById('flags-container-desktop'),
+          document.getElementById('flags-container-phone')
+      ];
+
+      flagContainers.forEach((targetDiv, index) => {
+          if (!targetDiv) return;
+          Array.from(targetDiv.children).forEach(child => child.classList.add('nx-hide-original'));
+
+          const suffix = index === 0 ? '-desktop' : '-phone';
+          const block = document.createElement('div');
+          block.className = 'nx-pty-block';
+          
+          block.innerHTML = `
+              <div class="nx-tube-container" id="nx-pty${suffix}" data-nx-size="small"></div>
+              <div class="nx-flags-row">
+                  <div class="nx-tube-container" id="nx-tp${suffix}" data-nx-size="small"></div>
+                  <div class="nx-tube-container" id="nx-ta${suffix}" data-nx-size="small"></div>
+                  <div class="nx-ecc-wrapper" id="nx-ecc${suffix}"></div> 
+                  <div class="nx-tube-container" id="nx-st${suffix}" data-nx-size="small"></div>
+                  <div class="nx-tube-container" id="nx-ms${suffix}" data-nx-size="small"></div>
+              </div>
+          `;
+          targetDiv.appendChild(block);
+
+          setTubeText(`nx-pty${suffix}`, '              ', false); // 14 spaces
+          setTubeText(`nx-tp${suffix}`, 'TP', false);
+          setTubeText(`nx-ta${suffix}`, 'TA', false);
+          setTubeText(`nx-st${suffix}`, 'ST', false);
+          setTubeText(`nx-ms${suffix}`, 'MS', false);
+      });
+
+      // --- Sync ECC flag via Observer ---
+      const originalFlag = document.querySelector('.data-flag');
+      if (originalFlag) {
+          const updateEcc = () => {
+              const dt = document.getElementById('nx-ecc-desktop');
+              const ph = document.getElementById('nx-ecc-phone');
+              if (dt) dt.innerHTML = originalFlag.innerHTML;
+              if (ph) ph.innerHTML = originalFlag.innerHTML;
+          };
+          new MutationObserver(updateEcc).observe(originalFlag, { childList: true, subtree: true, attributes: true });
+          updateEcc();
+      }
+
+      // --- CLICK FUNCTION FOR ST (Stereo/Mono Toggle) ---
+      ['desktop', 'phone'].forEach(suffix => {
+          const stTube = document.getElementById(`nx-st-${suffix}`);
+          if (stTube) {
+              stTube.title = "Stereo / Mono toggle";
+              stTube.addEventListener('click', () => {
+                  const originalToggle = document.getElementById('stereoIcon') || document.querySelector('.stereo-container');
+                  if (originalToggle) originalToggle.click();
+              });
+          }
+      });
+
+      // --- HELPER: One-time read of DOM start state (Priming) ---
+      const checkInitialDomState = (selector) => {
+          const el = document.querySelector(selector);
+          if (!el) return false;
+          return parseFloat(window.getComputedStyle(el).opacity) > 0.5 && !el.classList.contains('text-gray');
+      };
+
+      // Initially fill tubes to avoid empty startup screens
+      ['desktop', 'phone'].forEach(suffix => {
+          setTubeFlag(`nx-tp-${suffix}`, checkInitialDomState('.data-tp'));
+          setTubeFlag(`nx-ta-${suffix}`, checkInitialDomState('.data-ta'));
+          
+          setTubeText(`nx-ms-${suffix}`, 'MS', checkInitialDomState('.data-ms'));
+          
+          const stEl = document.querySelector('.stereo-container .data-st');
+          if (stEl) setTubeFlag(`nx-st-${suffix}`, parseFloat(window.getComputedStyle(stEl).opacity) > 0.5);
+      });
+
+      // --- Connect WebSocket for Nixie updates ---
+      function attachNixieWebSocket() {
+          if (typeof window.socketPromise !== 'undefined') {
+              window.socketPromise.then(ws => {
+                  ws.addEventListener("message", (evt) => {
+                      try {
+                          const message = JSON.parse(evt.data);
+
+                          // PTY
+                          if (message.pty !== undefined && message.pty !== null) {
+                              let ptyIndex = Number(message.pty);
+                              if (Number.isNaN(ptyIndex) || ptyIndex < 0 || ptyIndex >= PTY_TABLE.length) ptyIndex = 0;
+                              let ptyText = PTY_TABLE[ptyIndex];
+                              let isOn = ptyText !== "PTY";
+                              
+                              // Center PTY text across 14 tubes
+                              let formattedPty;
+                              if (ptyText.length >= 14) {
+                                  formattedPty = ptyText.substring(0, 14); 
+                              } else {
+                                  let leftSpaces = Math.floor((14 - ptyText.length) / 2);
+                                  let rightSpaces = 14 - ptyText.length - leftSpaces;
+                                  formattedPty = ' '.repeat(leftSpaces) + ptyText + ' '.repeat(rightSpaces);
+                              }
+
+                              setTubeText('nx-pty-desktop', formattedPty, isOn);
+                              setTubeText('nx-pty-phone', formattedPty, isOn);
+                          }
+
+                          // TP
+                          if (message.tp !== undefined && message.tp !== null) {
+                              let isOn = (message.tp === 1 || message.tp === true);
+                              setTubeFlag('nx-tp-desktop', isOn);
+                              setTubeFlag('nx-tp-phone', isOn);
+                          }
+
+                          // TA
+                          if (message.ta !== undefined && message.ta !== null) {
+                              let isOn = (message.ta === 1 || message.ta === true);
+                              setTubeFlag('nx-ta-desktop', isOn);
+                              setTubeFlag('nx-ta-phone', isOn);
+                          }
+
+                          // ST (Stereo)
+                          if (message.st !== undefined && message.st !== null) {
+                              let isOn = (message.st === 1 || message.st === true);
+                              setTubeFlag('nx-st-desktop', isOn);
+                              setTubeFlag('nx-st-phone', isOn);
+                          }
+
+                          // MS & LIC (Music/Speech Split Logic)
+                          let updateMS = false;
+
+                          if (message.ms !== undefined && message.ms !== null) {
+                              window._nxHasWSMS = true;
+                              window._nxState.ms = (message.ms === 1 || message.ms === true) ? 1 : 0;
+                              updateMS = true;
+                          }
+                          
+                          if (message.lic !== undefined && message.lic !== null) {
+                              window._nxState.lic = (message.lic === 1 || message.lic === true) ? 1 : 0;
+                              updateMS = true;
+                          }
+
+                          if (updateMS) {
+                              let msText = 'MS'; 
+                              let turnOn = false;
+
+                              if (window._nxState.ms === 1) {
+                                  turnOn = true;
+                                  // If lic = 0 -> 'M ', If lic = 1 -> ' S' (spaces turn off the respective tube)
+                                  msText = (window._nxState.lic === 0) ? 'M ' : ' S';
+                              }
+
+                              setTubeText('nx-ms-desktop', msText, turnOn);
+                              setTubeText('nx-ms-phone', msText, turnOn);
+                          }
+
+                      } catch (err) { }
+                  });
+              }).catch(() => setTimeout(attachNixieWebSocket, 1000));
+          } else {
+              setTimeout(attachNixieWebSocket, 1000);
+          }
+      }
+      attachNixieWebSocket();
+
+      // --- FALLBACK: ONLY FOR MS ---
+      const msDOM = document.querySelector('.data-ms');
+      if (msDOM) {
+          new MutationObserver(() => {
+              if (window._nxHasWSMS) return; 
+              let opacity = parseFloat(window.getComputedStyle(msDOM).opacity);
+              let isOn = opacity > 0.8 && !msDOM.classList.contains('text-gray');
+              setTubeText('nx-ms-desktop', 'MS', isOn); 
+              setTubeText('nx-ms-phone', 'MS', isOn);   
+          }).observe(msDOM, { attributes: true, attributeFilter: ['style', 'class'] });
+      }
+
+      // --- PART 2: STANDARD TUBES (FREQ, PS, PI, SIGNAL) ---
+      const decElem = document.getElementById('data-signal-decimal');
+      const configs = [
+          { sel: '#data-frequency', type: 'FREQ', size: 'large' },
+          { sel: '#data-ps', type: 'PS', size: 'large' },
+          { sel: '#data-pi', type: 'PI', size: 'large' },
+          { sel: '#data-signal', type: 'SIGNAL', size: 'medium' }
+      ];
+
+      configs.forEach(cfg => {
+          const elems = document.querySelectorAll(cfg.sel);
+          elems.forEach(originalElem => {
+              if (!originalElem) return;
+              originalElem.classList.add('nx-hide-original');
+
+              const tubeDisplay = document.createElement('div');
+              tubeDisplay.className = 'nx-tube-container';
+              tubeDisplay.setAttribute('data-nx-size', cfg.size);
+              originalElem.parentNode.insertBefore(tubeDisplay, originalElem.nextSibling);
+
+              const updateTubes = () => {
+                  let rawText = originalElem.textContent || '';
+                  let text = '';
+
+                  if (cfg.type === 'PS') text = rawText.padEnd(8, ' ').substring(0, 8);
+                  else if (cfg.type === 'PI') text = rawText.padStart(4, ' ').substring(0, 4);
+                  else if (cfg.type === 'FREQ') {
+                      let digits = rawText.replace('.', '').trim().padStart(6, ' ');
+                      text = digits.substring(0, 3) + '.' + digits.substring(3, 6);
+                  } else if (cfg.type === 'SIGNAL') {
+                      let decVal = decElem ? decElem.textContent.replace('.', '') : '0';
+                      text = rawText.trim().padStart(3, ' ').slice(-3) + '.' + decVal.substring(0, 1);
+                  }
+
+                  if (tubeDisplay.children.length !== text.length) {
+                      tubeDisplay.innerHTML = '';
+                      for (let i = 0; i < text.length; i++) {
+                          tubeDisplay.appendChild(createTube(text[i], text[i] === '.'));
+                      }
+                  }
+
+                  const tubes = tubeDisplay.children;
+                  for (let i = 0; i < text.length; i++) {
+                      if (tubes[i].classList.contains('nx-tube-dot')) continue;
+                      let charDiv = tubes[i].querySelector('.nx-char');
+                      if (charDiv) {
+                          if (text[i] === ' ' || text[i] === '') charDiv.classList.add('nx-off');
+                          else { charDiv.innerText = text[i]; charDiv.classList.remove('nx-off'); }
+                      }
+                  }
+              };
+
+              updateTubes();
+              const observer = new MutationObserver(updateTubes);
+              observer.observe(originalElem, { characterData: true, childList: true, subtree: true });
+              if (cfg.type === 'SIGNAL' && decElem) observer.observe(decElem, { characterData: true, childList: true, subtree: true });
+          });
+      });
+  }
+
   // ── Start ─────────────────────────────────────────────────
   function start() {
     // Inject unified CSS for Magic Eye and Range Slider
@@ -3344,7 +3372,7 @@ function startScaleDrag(evt) {
                 border: none;
             }
 
-            /* Track (Die Schiene) - Firefox */
+            /* Track - Firefox */
             #analog-scale-brightness::-moz-range-track {
                 width: 100%;
                 height: 24px;
@@ -3385,16 +3413,17 @@ function startScaleDrag(evt) {
     
     // Attempt initialization of the Magic Eye display in the UI
     setTimeout(initMagicEye, 1000);
+    
+    // Attempt initialization of the Nixie Tube display
+    setTimeout(initNixieDisplay, 1200);
 
     console.log(`[${PLUGIN_NAME}] v${PLUGIN_VERSION} loaded.`);
 
     // --- Instant Theme Update Hook (Fixed Timing) ---
     const forceThemeRedraw = () => {
-        // 1. Clear the color cache so getTheme() fetches the new CSS variables
         _cachedTheme = null;
         _lastThemeCheck = 0;
 
-        // 2. Invalidate the "dirty checking" memory to force a full redraw on the next frame
         lastDrawnFreq = -999;
         lastDrawnOuterAngle = -999;
         lastDrawnInnerAngle = -999;
@@ -3403,19 +3432,16 @@ function startScaleDrag(evt) {
         lastDrawnMagicEyeLevel = -999;
     };
 
-    // Method 1: Listen for clicks directly on the theme dropdown options
     const themeSelector = document.getElementById('theme-selector');
     if (themeSelector) {
         const options = themeSelector.querySelectorAll('.option');
         options.forEach(option => {
             option.addEventListener('click', () => {
-                // Wait 150ms to allow the main webserver script to update the DOM's CSS variables first
                 setTimeout(forceThemeRedraw, 150);
             });
         });
     }
 
-    // Method 2: Global Fallback - watch the HTML/Body tags for theme class/style changes
     const themeObserver = new MutationObserver(() => {
         setTimeout(forceThemeRedraw, 150);
     });

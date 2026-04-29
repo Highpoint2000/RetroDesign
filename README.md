@@ -9,10 +9,9 @@ Analog frequency display, manual frequency rotary control and VU meter, as well 
 <img width="350" height="230" alt="retrodesign3" src="https://github.com/user-attachments/assets/bd95270e-d405-469a-a3b8-d1473c9cb1b2" />
 
 
-## Version 1.2a
+## Version 1.3
 
-- Shortcut "f" or "F" added to toggle the FM Scale Button (open/close FM Scale)
-- Rounded corner design
+- Switchable Nixie tubes adaptation for radio displays implemented
 
 ### Note: [Enhanced Tuning](https://github.com/Overland-DX/Enhanced-Tuning) users do not need this plugin, as it is already an extended component in newer versions there! The analog frequency display is designed for FM use only. AM users, please install the Enhanced Tuning Plugin!
  
@@ -33,6 +32,7 @@ Analog frequency display, manual frequency rotary control and VU meter, as well 
 - Autostart Toggle: Enable or disable the automatic launch of the FM Scale upon page load.
 - Visual Component Toggles: Independently turn the Analog VU Meter and the Magic Eye on or off according to your preference.
 - Spectrum Plugin Integration: Make sure the spectrum plugin is active, then activate the FM scale. To refresh the spectrum, use the refresh icon that appears.
+- Nixie Tubes Displays: You can use the switch in the web server side panel to turn off the Nixie tube display if needed.
 
 ### Keyboard Shortcuts
     airrow left  - frequency down (100 KHz step)
@@ -56,6 +56,11 @@ If you have any questions, would like to report problems, or have suggestions fo
 
 <details>
 <summary>History</summary>
+
+### Version 1.2a
+
+- Shortcut "f" or "F" added to toggle the FM Scale Button (open/close FM Scale)
+- Rounded corner design
 
 ### Version 1.2
 

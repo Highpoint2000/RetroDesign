@@ -1,7 +1,7 @@
 // Plugin configuration, this is used in the administration when plugins are loaded
 var pluginConfig = {
     name: 'Retro Design Elements',
-    version: '1.2a',
+    version: '1.3',
     author: 'Highpoint',
     frontEndPath: 'RetroDesign/retrodesign.js'
 }
