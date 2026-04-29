@@ -2,6 +2,8 @@
 # Retro Design Elements for [FM-DX-Webserver](https://github.com/NoobishSVK/fm-dx-webserver)
 Analog frequency display, manual frequency rotary control and VU meter, as well as Magic Eye for the FM-DX web server
 
+<img width="350" height="230" alt="Screenshot 2026-04-29 153031" src="https://github.com/user-attachments/assets/8fa5f816-b2be-4c3d-ae56-2d98bc2bc41d" />
+
 <img width="350" height="230" alt="retrodesign2" src="https://github.com/user-attachments/assets/df67643b-4ac5-4033-a0bd-b48d3a2cd95f" />
 
 <img width="350" height="230" alt="retrodesign1" src="https://github.com/user-attachments/assets/34d1bfbd-148c-428c-b0ea-383e015f03f1" />
