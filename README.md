@@ -2,8 +2,6 @@
 # Retro Design Elements for [FM-DX-Webserver](https://github.com/NoobishSVK/fm-dx-webserver)
 Analog frequency display, manual frequency rotary control and VU meter, as well as Magic Eye for the FM-DX web server
 
-<img width="350" height="230" alt="Screenshot 2026-04-29 153031" src="https://github.com/user-attachments/assets/bad13262-4814-45c7-945c-372346f155b6" />
-
 <img width="350" height="230" alt="retrodesign2" src="https://github.com/user-attachments/assets/df67643b-4ac5-4033-a0bd-b48d3a2cd95f" />
 
 <img width="350" height="230" alt="retrodesign1" src="https://github.com/user-attachments/assets/34d1bfbd-148c-428c-b0ea-383e015f03f1" />
@@ -11,9 +9,10 @@ Analog frequency display, manual frequency rotary control and VU meter, as well 
 <img width="350" height="230" alt="retrodesign3" src="https://github.com/user-attachments/assets/bd95270e-d405-469a-a3b8-d1473c9cb1b2" />
 
 
-## Version 1.3
+## Version 1.3a
 
-- Switchable Nixie tubes adaptation for radio displays implemented
+- Fixed audio dropout issues
+- Fixed incorrect display of Nixie Tubes with the VisualEQ plugin
 
 ### Note: [Enhanced Tuning](https://github.com/Overland-DX/Enhanced-Tuning) users do not need this plugin, as it is already an extended component in newer versions there! The analog frequency display is designed for FM use only. AM users, please install the Enhanced Tuning Plugin!
  
@@ -58,6 +57,10 @@ If you have any questions, would like to report problems, or have suggestions fo
 
 <details>
 <summary>History</summary>
+
+### Version 1.3
+
+- Switchable Nixie tubes adaptation for radio displays implemented
 
 ### Version 1.2a
 

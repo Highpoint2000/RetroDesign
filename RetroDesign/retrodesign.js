@@ -1,19 +1,46 @@
 ////////////////////////////////////////////////////////////
 ///                                                      ///
-///  RETRODESIGN SCRIPT FOR FM-DX-WEBSERVER     (V1.3)  ///
+///  RETRODESIGN SCRIPT FOR FM-DX-WEBSERVER     (V1.3a)  ///
 ///                                                      ///
-///  by Highpoint                last update: 29.04.25   ///
+///  by Highpoint                last update: 30.04.25   ///
 ///                                                      ///
 ///  https://github.com/Highpoint2000/RetroDesign        ///
 ///                                                      ///
 ////////////////////////////////////////////////////////////
 
 (() => {
-  const PLUGIN_VERSION = "1.3";
+  const PLUGIN_VERSION = "1.3a";
   const PLUGIN_NAME    = "RetroDesign";
   const pluginHomepageUrl = "https://github.com/Highpoint2000/RetroDesign/releases";
   const pluginUpdateUrl   = "https://raw.githubusercontent.com/Highpoint2000/RetroDesign/main/RetroDesign/retrodesign.js";
   const CHECK_FOR_UPDATES = true;
+
+// --- Safari Canvas Text-Measurement Cache ---
+  const _textWidthCache = {};
+  function getMeasuredWidth(ctx, text, fontString) {
+      const key = text + "|" + fontString;
+      if (!_textWidthCache[key]) {
+          ctx.font = fontString;
+          _textWidthCache[key] = ctx.measureText(text).width;
+      }
+      return _textWidthCache[key];
+  }
+  // -------------------------------------------------------------
+
+  // --- lobale DB Cache für weniger JSON.parse / LocalStorage-Aufrufe ---
+  let _stationDbCache = null;
+  function getRetroDb() {
+      if (!_stationDbCache) {
+          const dbStr = localStorage.getItem('retro_station_db');
+          _stationDbCache = dbStr ? JSON.parse(dbStr) : {};
+      }
+      return _stationDbCache;
+  }
+  function saveRetroDb(db) {
+      _stationDbCache = db;
+      localStorage.setItem('retro_station_db', JSON.stringify(db));
+  }
+  // -------------------------------------------------------------------------
 
   let FM_MIN = 87.5;
   let FM_MAX = 108.0;
@@ -42,13 +69,11 @@
   let renderedStations = [];
 
   // --- DYNAMICALLY SUPPRESS SPECTRUM HIGHLIGHTER ---
-  // We slightly override the browser's default drawing function to hide the white cursor line
+  // PERFORMANCE FIX: y === 9 zuerst prüfen, um bei abertausenden Aufrufen pro Sekunde den langsamen DOM-Zugriff (this.canvas.id) zu vermeiden
   const originalFillRect = CanvasRenderingContext2D.prototype.fillRect;
   CanvasRenderingContext2D.prototype.fillRect = function(x, y, w, h) {
-      if (this.canvas && this.canvas.id === 'sdr-graph' && isVisible) {
-          if (y === 9) {
-              return; 
-          }
+      if (y === 9 && isVisible && this.canvas && this.canvas.id === 'sdr-graph') {
+          return; 
       }
       originalFillRect.call(this, x, y, w, h);
   };
@@ -588,6 +613,7 @@
     if ((typeof isShowPsScaleEnabled !== 'undefined' && isShowPsScaleEnabled) && x >= clearBtnLeft && x <= clearBtnRight && y >= clearBtnTop && y <= clearBtnBottom) {
         if (confirm("Are you sure you want to clear all saved PS stations?")) {
             localStorage.removeItem('retro_station_db');
+            _stationDbCache = null; // --- PERFORMANCE FIX: Cache leeren
             window._retroClearClicked = Date.now();
             window._forceRedrawUntil = Date.now() + 1000;
             if (typeof lastDrawnFreq !== 'undefined') lastDrawnFreq = -999;
@@ -1167,8 +1193,7 @@
       // --- START: DRAW SAVED PS STATION NAMES ---
       renderedStations = []; 
       if (isShowPsScaleEnabled) {
-          const dbStr = localStorage.getItem('retro_station_db');
-          const stationDB = dbStr ? JSON.parse(dbStr) : {};
+          const stationDB = getRetroDb(); // --- PERFORMANCE FIX: Cache abrufen
           
           let visibleStations = [];
           for (let fStr in stationDB) {
@@ -1204,9 +1229,9 @@
           let rowRightEdges = new Array(totalRows).fill(-9999);
           const minHorizontalGap = isVuEnabled ? 6 : 8; 
 
-          ctx.font = `${stFontSize}px "Arial Narrow", Arial, sans-serif`;
+          const fontStrBase = `${stFontSize}px "Arial Narrow", Arial, sans-serif`;
           const baselineString = isVuEnabled ? "000000" : "00000000";
-          const minBoxWidth = ctx.measureText(baselineString).width; 
+          const minBoxWidth = getMeasuredWidth(ctx, baselineString, fontStrBase);
 
           const minAllowedX = paperX + 4; 
           const maxAllowedX = paperX + paperW - 4; 
@@ -1215,9 +1240,8 @@
               const isHovered = (window._retroHoveredFreq === st.freq) || (Math.abs(freq - st.freq) <= 0.04);
               const isActive = st.data && st.data.active !== false;
 
-              ctx.font = `${stFontSize}px "Arial Narrow", Arial, sans-serif`;
-              const baseTextMetrics = ctx.measureText(st.name);
-              const baseBoxWidth = Math.max(minBoxWidth, baseTextMetrics.width);
+              const fontStr = `${stFontSize}px "Arial Narrow", Arial, sans-serif`;
+              const baseBoxWidth = Math.max(minBoxWidth, getMeasuredWidth(ctx, st.name, fontStr));
               const basePadX = isVuEnabled ? 2 : 4; 
               const baseTotalWidth = baseBoxWidth + (basePadX * 2);
               
@@ -1257,12 +1281,12 @@
               rowRightEdges[assignedRow] = Math.max(rowRightEdges[assignedRow], finalX + (baseTotalWidth / 2));
               const y = startY + assignedRow * rowHeight + (rowHeight / 2);
 
-              const hoverFactor = 1.15; 
+			  const hoverFactor = 1.15; 
               const currentFontSize = isHovered ? stFontSize * hoverFactor : stFontSize;
-              ctx.font = `${isHovered ? 'bold ' : ''}${currentFontSize}px "Arial Narrow", Arial, sans-serif`;
-              
-              const drawTextMetrics = ctx.measureText(st.name);
-              const drawBoxWidth = Math.max(minBoxWidth, drawTextMetrics.width);
+              const drawFontStr = `${isHovered ? 'bold ' : ''}${currentFontSize}px "Arial Narrow", Arial, sans-serif`;
+              ctx.font = drawFontStr;
+              const drawBoxWidth = Math.max(minBoxWidth, getMeasuredWidth(ctx, st.name, drawFontStr));
+			  
               const drawPadX = isHovered ? (isVuEnabled ? 4 : 6) : basePadX;
               const th = currentFontSize * 1.05; 
               const drawPadY = isHovered ? 1 : 0; 
@@ -2319,7 +2343,8 @@
 
       const getTxt = (id) => {
           const el = document.getElementById(id);
-          return el ? (el.innerText || el.textContent).trim() : "";
+          // PERFORMANCE FIX: Prefer textContent to avoid layout thrashing
+          return el ? (el.textContent || el.innerText).trim() : "";
       };
 
       const saveCurrentPS = () => {
@@ -2331,7 +2356,8 @@
               freqSettledTime = Date.now();
           }
           
-          const rawText = psElement.innerText || psElement.textContent || "";
+          // PERFORMANCE FIX: Prefer textContent to avoid reflows in background loop
+          const rawText = psElement.textContent || psElement.innerText || "";
           const ps = rawText.replace(/\u00A0/g, ' ').trim(); 
           
           if (ps !== lastPS) {
@@ -2342,7 +2368,8 @@
           const freqStr = (Math.round(f * 10) / 10).toFixed(1); 
           const currentF = parseFloat(freqStr);
           
-          let db = JSON.parse(localStorage.getItem('retro_station_db') || '{}');
+          // PERFORMANCE FIX: Use memory cache
+          let db = getRetroDb();
 
           for (let key in db) {
               if (typeof db[key] === 'string') {
@@ -2426,7 +2453,8 @@
                   if (isUpdated || wasNew || updateLastSeen) {
                       entry.lastSeen = Date.now();
                       db[freqStr] = entry;
-                      localStorage.setItem('retro_station_db', JSON.stringify(db));
+                      // PERFORMANCE FIX: Update cache
+                      saveRetroDb(db);
                       
                       if (typeof renderedStations !== 'undefined') {
                           for (let st of renderedStations) {
@@ -2454,10 +2482,10 @@
                       clearTimeout(deleteTimer);
                       activeDeleteFreq = freqStr;
                       deleteTimer = setTimeout(() => {
-                          let currentDb = JSON.parse(localStorage.getItem('retro_station_db') || '{}');
+                          let currentDb = getRetroDb();
                           if (currentDb[freqStr]) {
                               delete currentDb[freqStr];
-                              localStorage.setItem('retro_station_db', JSON.stringify(currentDb));
+                              saveRetroDb(currentDb);
                               
                               if (typeof lastDrawnFreq !== 'undefined') lastDrawnFreq = -999; 
                               if (window.scaleCanvas) drawScale(window.scaleCanvas, getExactFreq() || f);
@@ -2904,6 +2932,14 @@
       if (window._nixieInitDone) return;
       window._nixieInitDone = true;
 
+      // --- VISUAL EQ COMPATIBILITY CHECK ---
+      let visEqActive = false;
+      if (document.getElementById('visualeq-plugin-styles') !== null || document.querySelector('.panel-eq-container') !== null) {
+          visEqActive = true;
+      } else if (localStorage.getItem('visualeq_enabled_state') === 'true') {
+          visEqActive = true;
+      }
+
       // 1. Load sharp wire font
       const fontLink = document.createElement('link');
       fontLink.href = 'https://fonts.googleapis.com/css2?family=Saira+Extra+Condensed:wght@100;200;300&display=swap';
@@ -2911,30 +2947,17 @@
       document.head.appendChild(fontLink);
 
       // 2. Add Nixie CSS logic
-      const style = document.createElement('style');
-      style.innerHTML = `
-          /* --- NIXIE ACTIVE: Hide originals completely --- */
-          body.nixie-active #data-frequency, 
+      
+      const hidePsAndFlagsCss = visEqActive ? '' : `
           body.nixie-active #data-ps, 
-          body.nixie-active #data-pi, 
-          body.nixie-active #data-signal, 
-          body.nixie-active #data-signal-decimal, 
           body.nixie-active .data-pty, 
           body.nixie-active .data-tp, 
           body.nixie-active .data-ta, 
           body.nixie-active .data-ms, 
-          body.nixie-active .stereo-container, 
-          body.nixie-active .nx-hide-original { 
-              display: none !important; 
-          }
+          body.nixie-active .stereo-container,
+      `;
 
-          /* --- NIXIE INACTIVE: Hide Nixie tubes completely --- */
-          body:not(.nixie-active) .nx-tube-container,
-          body:not(.nixie-active) .nx-pty-block,
-          body:not(.nixie-active) .nx-flags-row {
-              display: none !important;
-          }
-
+      const flagsBgCss = visEqActive ? '' : `
           /* --- BACKGROUND WITH THEME COLOR (ONLY WHEN NIXIE ACTIVE) --- */
           body.nixie-active #flags-container-desktop, 
           body.nixie-active #flags-container-phone {
@@ -2950,6 +2973,39 @@
               background: color-mix(in srgb, var(--color-2) 70%, transparent) !important;
               background-color: color-mix(in srgb, var(--color-2) 70%, transparent) !important;
           }
+      `;
+
+      const style = document.createElement('style');
+      style.innerHTML = `
+          /* --- NIXIE ACTIVE: Hide originals completely (ONLY DESKTOP) --- */
+          @media (min-width: 769px) {
+              body.nixie-active #data-frequency, 
+              ${hidePsAndFlagsCss}
+              body.nixie-active #data-pi, 
+              body.nixie-active #data-signal, 
+              body.nixie-active #data-signal-decimal, 
+              body.nixie-active .nx-hide-original { 
+                  display: none !important; 
+              }
+          }
+
+          /* --- NIXIE TUBES MOBILE OFF --- */
+          @media (max-width: 768px) {
+              .nx-tube-container,
+              .nx-pty-block,
+              .nx-flags-row {
+                  display: none !important;
+              }
+          }
+
+          /* --- NIXIE INACTIVE: Hide Nixie tubes completely --- */
+          body:not(.nixie-active) .nx-tube-container,
+          body:not(.nixie-active) .nx-pty-block,
+          body:not(.nixie-active) .nx-flags-row {
+              display: none !important;
+          }
+
+          ${flagsBgCss}
 
           /* FIX FOR RETRODESIGN PLUGIN CONFLICT & MAGIC EYE DISPLACEMENT */
           body.nixie-active .magic-eye-text-wrapper { flex: 1 1 auto !important; width: auto !important; min-width: fit-content !important; max-width: none !important; }
@@ -3080,6 +3136,12 @@
           const container = document.getElementById(containerId);
           if (!container) return;
           
+          // --- PERFORMANCE FIX: Verhindere irrelevante DOM-Updates
+          const stateHash = text + "_" + turnOn;
+          if (container.dataset.lastState === stateHash) return;
+          container.dataset.lastState = stateHash;
+          // --------------------------------------------------------
+
           if (container.children.length !== text.length) {
               container.innerHTML = '';
               for (let i = 0; i < text.length; i++) {
@@ -3101,6 +3163,13 @@
       const setTubeFlag = (containerId, isOn) => {
           const container = document.getElementById(containerId);
           if (!container) return;
+
+          // --- PERFORMANCE FIX: Verhindere irrelevante DOM-Updates
+          const stateHash = isOn ? "1" : "0";
+          if (container.dataset.lastState === stateHash) return;
+          container.dataset.lastState = stateHash;
+          // --------------------------------------------------------
+
           const tubes = container.children;
           for (let i = 0; i < tubes.length; i++) {
               let charDiv = tubes[i].querySelector('.nx-char');
@@ -3112,80 +3181,82 @@
       window._nxState = { ms: 0, lic: 0 };
 
       // --- PART 1: Build PTY and FLAGS ---
-      const flagContainers = [
-          document.getElementById('flags-container-desktop'),
-          document.getElementById('flags-container-phone')
-      ];
+      if (!visEqActive) {
+          const flagContainers = [
+              document.getElementById('flags-container-desktop'),
+              document.getElementById('flags-container-phone')
+          ];
 
-      flagContainers.forEach((targetDiv, index) => {
-          if (!targetDiv) return;
-          Array.from(targetDiv.children).forEach(child => child.classList.add('nx-hide-original'));
+          flagContainers.forEach((targetDiv, index) => {
+              if (!targetDiv) return;
+              Array.from(targetDiv.children).forEach(child => child.classList.add('nx-hide-original'));
 
-          const suffix = index === 0 ? '-desktop' : '-phone';
-          const block = document.createElement('div');
-          block.className = 'nx-pty-block';
-          
-          block.innerHTML = `
-              <div class="nx-tube-container" id="nx-pty${suffix}" data-nx-size="small"></div>
-              <div class="nx-flags-row">
-                  <div class="nx-tube-container" id="nx-tp${suffix}" data-nx-size="small"></div>
-                  <div class="nx-tube-container" id="nx-ta${suffix}" data-nx-size="small"></div>
-                  <div class="nx-ecc-wrapper" id="nx-ecc${suffix}"></div> 
-                  <div class="nx-tube-container" id="nx-st${suffix}" data-nx-size="small"></div>
-                  <div class="nx-tube-container" id="nx-ms${suffix}" data-nx-size="small"></div>
-              </div>
-          `;
-          targetDiv.appendChild(block);
+              const suffix = index === 0 ? '-desktop' : '-phone';
+              const block = document.createElement('div');
+              block.className = 'nx-pty-block';
+              
+              block.innerHTML = `
+                  <div class="nx-tube-container" id="nx-pty${suffix}" data-nx-size="small"></div>
+                  <div class="nx-flags-row">
+                      <div class="nx-tube-container" id="nx-tp${suffix}" data-nx-size="small"></div>
+                      <div class="nx-tube-container" id="nx-ta${suffix}" data-nx-size="small"></div>
+                      <div class="nx-ecc-wrapper" id="nx-ecc${suffix}"></div> 
+                      <div class="nx-tube-container" id="nx-st${suffix}" data-nx-size="small"></div>
+                      <div class="nx-tube-container" id="nx-ms${suffix}" data-nx-size="small"></div>
+                  </div>
+              `;
+              targetDiv.appendChild(block);
 
-          setTubeText(`nx-pty${suffix}`, '              ', false); // 14 spaces
-          setTubeText(`nx-tp${suffix}`, 'TP', false);
-          setTubeText(`nx-ta${suffix}`, 'TA', false);
-          setTubeText(`nx-st${suffix}`, 'ST', false);
-          setTubeText(`nx-ms${suffix}`, 'MS', false);
-      });
+              setTubeText(`nx-pty${suffix}`, '              ', false); // 14 spaces
+              setTubeText(`nx-tp${suffix}`, 'TP', false);
+              setTubeText(`nx-ta${suffix}`, 'TA', false);
+              setTubeText(`nx-st${suffix}`, 'ST', false);
+              setTubeText(`nx-ms${suffix}`, 'MS', false);
+          });
 
-      // --- Sync ECC flag via Observer ---
-      const originalFlag = document.querySelector('.data-flag');
-      if (originalFlag) {
-          const updateEcc = () => {
-              const dt = document.getElementById('nx-ecc-desktop');
-              const ph = document.getElementById('nx-ecc-phone');
-              if (dt) dt.innerHTML = originalFlag.innerHTML;
-              if (ph) ph.innerHTML = originalFlag.innerHTML;
-          };
-          new MutationObserver(updateEcc).observe(originalFlag, { childList: true, subtree: true, attributes: true });
-          updateEcc();
-      }
-
-      // --- CLICK FUNCTION FOR ST (Stereo/Mono Toggle) ---
-      ['desktop', 'phone'].forEach(suffix => {
-          const stTube = document.getElementById(`nx-st-${suffix}`);
-          if (stTube) {
-              stTube.title = "Stereo / Mono toggle";
-              stTube.addEventListener('click', () => {
-                  const originalToggle = document.getElementById('stereoIcon') || document.querySelector('.stereo-container');
-                  if (originalToggle) originalToggle.click();
-              });
+          // --- Sync ECC flag via Observer ---
+          const originalFlag = document.querySelector('.data-flag');
+          if (originalFlag) {
+              const updateEcc = () => {
+                  const dt = document.getElementById('nx-ecc-desktop');
+                  const ph = document.getElementById('nx-ecc-phone');
+                  if (dt) dt.innerHTML = originalFlag.innerHTML;
+                  if (ph) ph.innerHTML = originalFlag.innerHTML;
+              };
+              new MutationObserver(updateEcc).observe(originalFlag, { childList: true, subtree: true, attributes: true });
+              updateEcc();
           }
-      });
 
-      // --- HELPER: One-time read of DOM start state (Priming) ---
-      const checkInitialDomState = (selector) => {
-          const el = document.querySelector(selector);
-          if (!el) return false;
-          return parseFloat(window.getComputedStyle(el).opacity) > 0.5 && !el.classList.contains('text-gray');
-      };
+          // --- CLICK FUNCTION FOR ST (Stereo/Mono Toggle) ---
+          ['desktop', 'phone'].forEach(suffix => {
+              const stTube = document.getElementById(`nx-st-${suffix}`);
+              if (stTube) {
+                  stTube.title = "Stereo / Mono toggle";
+                  stTube.addEventListener('click', () => {
+                      const originalToggle = document.getElementById('stereoIcon') || document.querySelector('.stereo-container');
+                      if (originalToggle) originalToggle.click();
+                  });
+              }
+          });
 
-      // Initially fill tubes to avoid empty startup screens
-      ['desktop', 'phone'].forEach(suffix => {
-          setTubeFlag(`nx-tp-${suffix}`, checkInitialDomState('.data-tp'));
-          setTubeFlag(`nx-ta-${suffix}`, checkInitialDomState('.data-ta'));
-          
-          setTubeText(`nx-ms-${suffix}`, 'MS', checkInitialDomState('.data-ms'));
-          
-          const stEl = document.querySelector('.stereo-container .data-st');
-          if (stEl) setTubeFlag(`nx-st-${suffix}`, parseFloat(window.getComputedStyle(stEl).opacity) > 0.5);
-      });
+          // --- HELPER: One-time read of DOM start state (Priming) ---
+          const checkInitialDomState = (selector) => {
+              const el = document.querySelector(selector);
+              if (!el) return false;
+              return parseFloat(window.getComputedStyle(el).opacity) > 0.5 && !el.classList.contains('text-gray');
+          };
+
+          // Initially fill tubes to avoid empty startup screens
+          ['desktop', 'phone'].forEach(suffix => {
+              setTubeFlag(`nx-tp-${suffix}`, checkInitialDomState('.data-tp'));
+              setTubeFlag(`nx-ta-${suffix}`, checkInitialDomState('.data-ta'));
+              
+              setTubeText(`nx-ms-${suffix}`, 'MS', checkInitialDomState('.data-ms'));
+              
+              const stEl = document.querySelector('.stereo-container .data-st');
+              if (stEl) setTubeFlag(`nx-st-${suffix}`, parseFloat(window.getComputedStyle(stEl).opacity) > 0.5);
+          });
+      }
 
       // --- Connect WebSocket for Nixie updates ---
       function attachNixieWebSocket() {
@@ -3275,25 +3346,31 @@
       attachNixieWebSocket();
 
       // --- FALLBACK: ONLY FOR MS ---
-      const msDOM = document.querySelector('.data-ms');
-      if (msDOM) {
-          new MutationObserver(() => {
-              if (window._nxHasWSMS) return; 
-              let opacity = parseFloat(window.getComputedStyle(msDOM).opacity);
-              let isOn = opacity > 0.8 && !msDOM.classList.contains('text-gray');
-              setTubeText('nx-ms-desktop', 'MS', isOn); 
-              setTubeText('nx-ms-phone', 'MS', isOn);   
-          }).observe(msDOM, { attributes: true, attributeFilter: ['style', 'class'] });
+      if (!visEqActive) {
+          const msDOM = document.querySelector('.data-ms');
+          if (msDOM) {
+              new MutationObserver(() => {
+                  if (window._nxHasWSMS) return; 
+                  let opacity = parseFloat(window.getComputedStyle(msDOM).opacity);
+                  let isOn = opacity > 0.8 && !msDOM.classList.contains('text-gray');
+                  setTubeText('nx-ms-desktop', 'MS', isOn); 
+                  setTubeText('nx-ms-phone', 'MS', isOn);   
+              }).observe(msDOM, { attributes: true, attributeFilter: ['style', 'class'] });
+          }
       }
 
       // --- PART 2: STANDARD TUBES (FREQ, PS, PI, SIGNAL) ---
       const decElem = document.getElementById('data-signal-decimal');
       const configs = [
           { sel: '#data-frequency', type: 'FREQ', size: 'large' },
-          { sel: '#data-ps', type: 'PS', size: 'large' },
           { sel: '#data-pi', type: 'PI', size: 'large' },
           { sel: '#data-signal', type: 'SIGNAL', size: 'medium' }
       ];
+
+      // Add PS to configs ONLY if VisualEQ is not active
+      if (!visEqActive) {
+          configs.push({ sel: '#data-ps', type: 'PS', size: 'large' });
+      }
 
       configs.forEach(cfg => {
           const elems = document.querySelectorAll(cfg.sel);
@@ -3320,6 +3397,12 @@
                       text = rawText.trim().padStart(3, ' ').slice(-3) + '.' + decVal.substring(0, 1);
                   }
 
+                  // --- PERFORMANCE FIX & ANIMATION TRIGGER ---
+                  if (tubeDisplay.dataset.lastText === text) return;
+                  
+                  let oldText = tubeDisplay.dataset.lastText || "";
+                  tubeDisplay.dataset.lastText = text;
+
                   if (tubeDisplay.children.length !== text.length) {
                       tubeDisplay.innerHTML = '';
                       for (let i = 0; i < text.length; i++) {
@@ -3328,12 +3411,44 @@
                   }
 
                   const tubes = tubeDisplay.children;
-                  for (let i = 0; i < text.length; i++) {
-                      if (tubes[i].classList.contains('nx-tube-dot')) continue;
-                      let charDiv = tubes[i].querySelector('.nx-char');
-                      if (charDiv) {
-                          if (text[i] === ' ' || text[i] === '') charDiv.classList.add('nx-off');
-                          else { charDiv.innerText = text[i]; charDiv.classList.remove('nx-off'); }
+                  
+                  // --- SLIDE ANIMATION FOR DYNAMIC PS ---
+                  if (cfg.type === 'PS' && oldText !== "" && oldText !== text) {
+                          for (let i = 0; i < text.length; i++) {
+                              if (tubes[i].classList.contains('nx-tube-dot')) continue;
+                              let charDiv = tubes[i].querySelector('.nx-char');
+                              if (charDiv) {
+                                  // 1. Slide old text out to the left (Duration: 250ms)
+                                  charDiv.style.animation = 'nxSlideOutLeft 0.25s ease-in forwards';
+                                  
+                                  setTimeout(() => {
+                                      // 2. Replace content while it is invisible
+                                      if (text[i] === ' ' || text[i] === '') {
+                                          charDiv.classList.add('nx-off');
+                                      } else {
+                                          charDiv.innerText = text[i];
+                                          charDiv.classList.remove('nx-off');
+                                      }
+                                      
+                                      // 3. Slide new text in from the right (Duration: 250ms)
+                                      charDiv.style.animation = 'nxSlideInRight 0.25s ease-out forwards';
+                                      
+                                      // 4. Reset animation property when finished
+                                      setTimeout(() => {
+                                          charDiv.style.animation = '';
+                                      }, 250);
+                                  }, 250);
+                              }
+                          }
+                  } else {
+                      // --- STANDARD BEHAVIOR WITHOUT ANIMATION (for Frequency, PI, Signal) ---
+                      for (let i = 0; i < text.length; i++) {
+                          if (tubes[i].classList.contains('nx-tube-dot')) continue;
+                          let charDiv = tubes[i].querySelector('.nx-char');
+                          if (charDiv) {
+                              if (text[i] === ' ' || text[i] === '') charDiv.classList.add('nx-off');
+                              else { charDiv.innerText = text[i]; charDiv.classList.remove('nx-off'); }
+                          }
                       }
                   }
               };
@@ -3357,6 +3472,7 @@
                 #magic-eye-wrapper { display: none !important; }
                 .magic-eye-panel-override { display: block !important; }
                 .magic-eye-text-wrapper { display: contents !important; }
+				#analog-settings-wrapper { display: none !important; }
             }
             .magic-eye-hidden { display: none !important; }
 
